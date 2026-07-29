@@ -40,40 +40,36 @@ function tool_status_label(string $status): string
     };
 }
 
+function checkout_many(array $toolIds, int $employeeId, string $issuedBy, string $notes = '', array $accessoryQuantities = [], ?int $bundleId = null): int
+{
+    $toolIds = array_values(array_unique(array_filter(array_map('intval', $toolIds))));
+    if (!$toolIds) throw new RuntimeException('Select at least one tool.');
+    $pdo = db(); $pdo->beginTransaction();
+    try {
+        $employeeStmt=$pdo->prepare('SELECT id FROM employees WHERE id=? AND active=1'); $employeeStmt->execute([$employeeId]);
+        if(!$employeeStmt->fetch()) throw new RuntimeException('Employee not found or inactive.');
+        $placeholders=implode(',',array_fill(0,count($toolIds),'?'));
+        $toolStmt=$pdo->prepare("SELECT * FROM tools WHERE id IN ($placeholders) FOR UPDATE"); $toolStmt->execute($toolIds); $tools=$toolStmt->fetchAll();
+        if(count($tools)!==count($toolIds)) throw new RuntimeException('One or more selected tools were not found.');
+        foreach($tools as $tool) if($tool['status']!=='available') throw new RuntimeException($tool['tool_name'].' ('.$tool['internal_id'].') is not available.');
+        $batch=$pdo->prepare('INSERT INTO checkout_batches(employee_id,issued_by,checked_out_at,due_at,bundle_id,checkout_notes,status) VALUES(?,?,NOW(),?,?,?,"open")');
+        $batch->execute([$employeeId,$issuedBy,end_of_workday(),$bundleId?:null,$notes]); $batchId=(int)$pdo->lastInsertId();
+        $insert=$pdo->prepare('INSERT INTO checkouts(batch_id,tool_id,employee_id,issued_by,checked_out_at,due_at,checkout_notes,status) VALUES(?,?,?, ?,NOW(),?, ?,"open")');
+        $update=$pdo->prepare('UPDATE tools SET status="checked_out" WHERE id=?');
+        foreach($toolIds as $toolId){$insert->execute([$batchId,$toolId,$employeeId,$issuedBy,end_of_workday(),$notes]);$update->execute([$toolId]);}
+        if($accessoryQuantities){
+            $aGet=$pdo->prepare('SELECT * FROM accessories WHERE id=? AND active=1 FOR UPDATE');
+            $aInsert=$pdo->prepare('INSERT INTO checkout_accessories(batch_id,accessory_id,quantity) VALUES(?,?,?)');
+            $aUpdate=$pdo->prepare('UPDATE accessories SET quantity_available=quantity_available-? WHERE id=?');
+            foreach($accessoryQuantities as $accessoryId=>$qty){$accessoryId=(int)$accessoryId;$qty=(int)$qty;if($qty<1)continue;$aGet->execute([$accessoryId]);$a=$aGet->fetch();if(!$a)throw new RuntimeException('Accessory not found.');if((int)$a['quantity_available']<$qty)throw new RuntimeException('Not enough '.$a['accessory_name'].' available.');$aInsert->execute([$batchId,$accessoryId,$qty]);$aUpdate->execute([$qty,$accessoryId]);}
+        }
+        $pdo->commit(); return $batchId;
+    } catch(Throwable $e){$pdo->rollBack();throw $e;}
+}
+
 function checkout_tool(int $toolId, int $employeeId, string $issuedBy, string $notes = ''): void
 {
-    $pdo = db();
-    $pdo->beginTransaction();
-    try {
-        $toolStmt = $pdo->prepare('SELECT * FROM tools WHERE id = ? FOR UPDATE');
-        $toolStmt->execute([$toolId]);
-        $tool = $toolStmt->fetch();
-        if (!$tool) {
-            throw new RuntimeException('Tool not found.');
-        }
-        if ($tool['status'] !== 'available') {
-            throw new RuntimeException('This tool is not currently available.');
-        }
-
-        $employeeStmt = $pdo->prepare('SELECT id FROM employees WHERE id = ? AND active = 1');
-        $employeeStmt->execute([$employeeId]);
-        if (!$employeeStmt->fetch()) {
-            throw new RuntimeException('Employee not found or inactive.');
-        }
-
-        $insert = $pdo->prepare(
-            'INSERT INTO checkouts (tool_id, employee_id, issued_by, checked_out_at, due_at, checkout_notes, status)
-             VALUES (?, ?, ?, NOW(), ?, ?, "open")'
-        );
-        $insert->execute([$toolId, $employeeId, $issuedBy, end_of_workday(), $notes]);
-
-        $update = $pdo->prepare('UPDATE tools SET status = "checked_out" WHERE id = ?');
-        $update->execute([$toolId]);
-        $pdo->commit();
-    } catch (Throwable $e) {
-        $pdo->rollBack();
-        throw $e;
-    }
+    checkout_many([$toolId], $employeeId, $issuedBy, $notes);
 }
 
 function return_tool(int $checkoutId, string $receivedBy, string $condition, string $notes = ''): void

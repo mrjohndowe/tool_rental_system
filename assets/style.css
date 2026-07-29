@@ -62,3 +62,5 @@ button, .button, input, select, textarea { min-height: 44px; }
   th, td { padding: 9px; }
   .actions > * { flex: 1 1 140px; text-align: center; }
 }
+
+.selection-list{border:1px solid #d1d5db;border-radius:10px;max-height:330px;overflow:auto;margin:8px 0 16px;background:#fff}.select-item{display:flex;align-items:center;gap:12px;padding:11px 12px;border-bottom:1px solid #e5e7eb}.select-item:last-child{border-bottom:0}.select-item input[type=checkbox]{width:20px;height:20px;flex:0 0 auto}.select-item small{color:#6b7280}.accessory-row,.return-row{justify-content:space-between}.accessory-row input[type=number],.return-row input[type=number]{width:85px}.return-row select{max-width:190px}@media(max-width:700px){.return-row{align-items:flex-start;flex-direction:column}.return-row select{max-width:none;width:100%}}

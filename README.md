@@ -43,3 +43,15 @@ Sign in and use **Users** to edit the administrator account and change this pass
 3. Open the application and sign in with the initial administrator account.
 
 The default database configuration is in `config.php` and uses XAMPP's `root` account with a blank password.
+
+
+## Bundles, Multiple Tools, and Accessories Upgrade
+For an existing installation, import `database/bundles_accessories_upgrade.sql` in phpMyAdmin, then replace the PHP files.
+
+New features:
+- Select multiple individually tracked tools in one checkout.
+- Create reusable tool bundles from inventory.
+- Select a bundle to automatically choose its currently available tools.
+- Manage optional accessory inventory and quantities.
+- Return all or only some tools/accessories from a grouped checkout.
+- Each tool retains its own serial number, internal ID, status, and location.

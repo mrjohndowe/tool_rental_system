@@ -30,7 +30,9 @@ $current = basename($_SERVER['PHP_SELF']);
         <a class="<?= $current === 'index.php' ? 'active' : '' ?>" href="index.php">Dashboard</a>
         <a class="<?= $current === 'checkout.php' ? 'active' : '' ?>" href="checkout.php">Checkout</a>
         <a class="<?= $current === 'returns.php' ? 'active' : '' ?>" href="returns.php">Returns</a>
-        <a class="<?= $current === 'tools.php' ? 'active' : '' ?>" href="tools.php">Tools</a>
+        <a class="<?= in_array($current,['tools.php','tool_form.php'],true) ? 'active' : '' ?>" href="tools.php">Tools</a>
+        <a class="<?= in_array($current,['bundles.php','bundle_form.php'],true) ? 'active' : '' ?>" href="bundles.php">Bundles</a>
+        <a class="<?= $current === 'accessories.php' ? 'active' : '' ?>" href="accessories.php">Accessories</a>
         <a class="<?= $current === 'employees.php' ? 'active' : '' ?>" href="employees.php">Employees</a>
         <a class="<?= $current === 'history.php' ? 'active' : '' ?>" href="history.php">History</a>
         <?php if ((current_user()['role'] ?? '') === 'admin'): ?><a class="<?= $current === 'users.php' ? 'active' : '' ?>" href="users.php">Users</a><?php endif; ?>
