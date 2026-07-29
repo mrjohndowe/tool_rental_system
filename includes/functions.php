@@ -24,6 +24,14 @@ function consume_flashes(): array
     return $items;
 }
 
+function location_label(array $location): string
+{
+    $parts = [trim((string)($location['location_name'] ?? ''))];
+    if (trim((string)($location['area'] ?? '')) !== '') $parts[] = trim((string)$location['area']);
+    if (trim((string)($location['shelf'] ?? '')) !== '') $parts[] = trim((string)$location['shelf']);
+    return implode(' - ', array_filter($parts));
+}
+
 function end_of_workday(): string
 {
     return date('Y-m-d 23:59:59');

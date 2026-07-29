@@ -55,3 +55,6 @@ New features:
 - Manage optional accessory inventory and quantities.
 - Return all or only some tools/accessories from a grouped checkout.
 - Each tool retains its own serial number, internal ID, status, and location.
+
+## Locations and shelves upgrade
+Existing installations should import `database/locations_upgrade.sql`. A new **Locations** page lets authorized users add and edit storage locations, areas/rooms, and shelves. Tools and accessories are assigned from a saved-location dropdown.
