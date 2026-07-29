@@ -20,9 +20,9 @@ Sign in and use **Users** to edit the administrator account and change this pass
 
 ## Other features
 
-- Search employees by name, badge number, or work email.
+- Search employees by name, badge number, or department.
 - Add an employee from checkout and immediately issue a tool.
-- Optional employee badge number.
+- Required employee department and optional badge number.
 - Tool serial number, internal ID, and location fields.
 - Every checkout is due at 11:59:59 PM on the checkout date.
 - Overdue highlighting and return condition tracking.
@@ -58,3 +58,7 @@ New features:
 
 ## Locations and shelves upgrade
 Existing installations should import `database/locations_upgrade.sql`. A new **Locations** page lets authorized users add and edit storage locations, areas/rooms, and shelves. Tools and accessories are assigned from a saved-location dropdown.
+
+
+## Employee department upgrade
+For an existing installation, import `database/employee_department_upgrade.sql` in phpMyAdmin after making a database backup. This removes the employee work-email field, adds a required department field, and preserves existing employees with the temporary department `Unassigned` until you edit them.

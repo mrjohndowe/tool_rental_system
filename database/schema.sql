@@ -18,11 +18,11 @@ VALUES ('System Administrator', 'admin', '$2y$12$ETjr2J51DJLOvGb02ACOGOIcgqwNEAa
 CREATE TABLE IF NOT EXISTS employees (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(150) NOT NULL,
-    work_email VARCHAR(190) NOT NULL,
+    department VARCHAR(150) NOT NULL,
     badge_number VARCHAR(80) NULL,
     active TINYINT(1) NOT NULL DEFAULT 1,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY uq_employee_email (work_email), UNIQUE KEY uq_employee_badge (badge_number)
+    INDEX idx_employee_department (department), UNIQUE KEY uq_employee_badge (badge_number)
 ) ENGINE=InnoDB;
 
 
@@ -137,6 +137,6 @@ CREATE TABLE IF NOT EXISTS checkout_accessories (
 
 INSERT IGNORE INTO tool_locations (location_name, area, shelf) VALUES ('Tool Crib', 'Main Storage', 'Shelf A1'), ('Tool Crib', 'Battery Rack', 'Rack 1');
 
-INSERT IGNORE INTO employees (name, work_email, badge_number) VALUES ('Sample Employee', 'employee@example.com', '1001');
+INSERT IGNORE INTO employees (name, department, badge_number) VALUES ('Sample Employee', 'Maintenance', '1001');
 INSERT IGNORE INTO tools (tool_name, category, manufacturer, model_number, serial_number, internal_id, location_id, tool_location) SELECT 'Cordless Drill','Power Tools','DeWalt','DCD791','SN-DEMO-001','TOOL-0001',id,'Tool Crib - Main Storage - Shelf A1' FROM tool_locations WHERE location_name='Tool Crib' AND shelf='Shelf A1' LIMIT 1;
 INSERT IGNORE INTO accessories (accessory_name, internal_id, tool_location, quantity_total, quantity_available) VALUES ('Drill Battery', 'ACC-0001', 'Tool Crib - Battery Rack', 4, 4), ('Charger', 'ACC-0002', 'Tool Crib - Shelf A1', 2, 2);

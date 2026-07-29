@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tool-checkout-shell-v1';
+const CACHE_NAME = 'tool-checkout-shell-v2';
 const SHELL = ['./assets/style.css'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(SHELL)));
