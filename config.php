@@ -1,12 +1,15 @@
 <?php
 declare(strict_types=1);
 
-const APP_NAME = 'Employee Tool Checkout';
+const APP_NAME = 'Moss Tool Connex Checkout System';
+const APP_VERSION = '1.2.1';
 const DB_HOST = '127.0.0.1';
 const DB_NAME = 'tool_rental';
 const DB_USER = 'root';
 const DB_PASS = '';
 const TIMEZONE = 'America/Denver';
+const DEVELEPER_NAME = "MrJohnDowe";
+const DEVELOPED_YEAR = 2026;
 
 date_default_timezone_set(TIMEZONE);
 

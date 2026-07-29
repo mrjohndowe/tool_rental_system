@@ -108,3 +108,22 @@ function return_tool(int $checkoutId, string $receivedBy, string $condition, str
         throw $e;
     }
 }
+
+function auto_copyright($year = 'auto'){
+    if(INTVAL($year) == 'auto')
+    {
+        $year = DATE('Y'); 
+    } 
+    if(INTVAL($year) == DATE('Y'))
+    { 
+        ECHO INTVAL($year); 
+    } 
+    if(INTVAL($year) < DATE('Y'))
+    { 
+        ECHO INTVAL($year) . ' - ' . DATE('Y'); 
+    } 
+    if(INTVAL($year) > DATE('Y'))
+    { 
+        ECHO DATE('Y'); 
+    } 
+} 
