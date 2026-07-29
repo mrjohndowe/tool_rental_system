@@ -38,3 +38,27 @@ th { background: #f8fafc; }
 .overdue-row { background: #fff1f2; }
 footer { text-align: center; color: #6b7280; padding: 25px; }
 @media (max-width: 700px) { .topbar { align-items: flex-start; } .search-row { grid-template-columns: 1fr; } }
+.user-chip { align-self: center; padding: 8px 11px; border: 1px solid #475569; border-radius: 999px; color: #dbeafe; font-size: 13px; }
+.login-page { min-height: 100vh; display: grid; place-items: center; padding: 20px; background: #e5e7eb; }
+.login-card { width: min(430px, 100%); background: #fff; padding: 28px; border-radius: 12px; box-shadow: 0 12px 30px rgba(0,0,0,.15); }
+.login-card h1 { margin: 0 0 5px; }
+.login-button { width: 100%; margin-top: 18px; padding: 12px; }
+.login-help { margin: 18px 0 0; font-size: 13px; }
+td form { margin: 0; }
+
+/* Native/PWA mobile refinements */
+body { padding-bottom: env(safe-area-inset-bottom); }
+.topbar { padding-top: max(18px, env(safe-area-inset-top)); }
+button, .button, input, select, textarea { min-height: 44px; }
+@media (max-width: 700px) {
+  .topbar { position: sticky; top: 0; z-index: 50; padding: 12px; gap: 10px; }
+  .topbar h1 { font-size: 19px; }
+  .topbar p { font-size: 12px; }
+  .topbar nav { width: 100%; overflow-x: auto; flex-wrap: nowrap; padding-bottom: 4px; scrollbar-width: thin; }
+  .topbar nav a, .user-chip { flex: 0 0 auto; white-space: nowrap; }
+  .container { margin: 14px auto; padding: 0 10px; }
+  .grid.two { grid-template-columns: 1fr; }
+  .card { padding: 14px; }
+  th, td { padding: 9px; }
+  .actions > * { flex: 1 1 140px; text-align: center; }
+}

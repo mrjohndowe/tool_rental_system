@@ -1,0 +1,11 @@
+{
+  "name": "Employee Tool Checkout System",
+  "short_name": "Tool Checkout",
+  "description": "Issue and return workplace tools by employee name or badge number.",
+  "start_url": "./login.php",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#111827",
+  "theme_color": "#111827",
+  "icons": []
+}

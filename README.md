@@ -1,28 +1,45 @@
 # Employee Tool Checkout System
 
-A PHP/MySQL tool checkout application designed for a single attendant to issue tools to employees by badge number, name, or work email.
+A PHP/MySQL tool checkout application where authorized attendants issue and return tools for employees.
 
-## Included features
+## Login system
+
+- Every application page requires a signed-in account.
+- Checkout and return records automatically use the signed-in user's full name.
+- Clerk accounts can issue/return tools and manage the employee and tool records.
+- Administrator accounts can also create, edit, activate, and deactivate system users.
+- Passwords are stored with PHP's secure `password_hash()` format.
+- Login sessions regenerate their ID after successful authentication.
+
+### Initial administrator account
+
+- Username: `admin`
+- Password: `ChangeMe123!`
+
+Sign in and use **Users** to edit the administrator account and change this password immediately.
+
+## Other features
 
 - Search employees by name, badge number, or work email.
-- Add an employee directly from the checkout screen and immediately continue issuing a tool.
+- Add an employee from checkout and immediately issue a tool.
 - Optional employee badge number.
-- Tool serial number, internal ID number, and storage/location fields.
-- One open checkout per physical tool because checked-out tools are removed from the available list.
-- Every checkout is automatically due at 11:59:59 PM on the checkout date.
-- Overdue highlighting on the dashboard, returns page, and history.
-- Return condition tracking; damaged tools automatically move to Maintenance status.
-- Tool and employee management pages.
-- Complete checkout and return history.
+- Tool serial number, internal ID, and location fields.
+- Every checkout is due at 11:59:59 PM on the checkout date.
+- Overdue highlighting and return condition tracking.
+- Damaged tools automatically enter Maintenance status.
 
-## Installation with XAMPP
+## New installation with XAMPP
 
-1. Copy the `tool_rental_system` folder into `C:\xampp\htdocs\`.
-2. Start Apache and MySQL in XAMPP.
-3. Open phpMyAdmin and import `database/schema.sql`.
-4. Confirm the database settings in `config.php`. XAMPP defaults are already configured: user `root`, blank password.
-5. Open `http://localhost/tool_rental_system/`.
+1. Copy `tool_rental_system` into `C:\xampp\htdocs\`.
+2. Start Apache and MySQL.
+3. Import `database/schema.sql` in phpMyAdmin.
+4. Open `http://localhost/tool_rental_system/`.
+5. Sign in using the initial administrator account above.
 
-## Production note
+## Upgrade an existing installation
 
-The included build is intended as a functional internal starter. Before exposing it to the public internet, add user authentication, HTTPS, CSRF protection, audit permissions, automated backups, and your company retention policy.
+1. Replace the existing application files with this updated version.
+2. Import `database/login_upgrade.sql` in phpMyAdmin.
+3. Open the application and sign in with the initial administrator account.
+
+The default database configuration is in `config.php` and uses XAMPP's `root` account with a blank password.

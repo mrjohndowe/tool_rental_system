@@ -7,8 +7,8 @@ $employeeId = (int)($_GET['employee_id'] ?? $_POST['employee_id'] ?? 0);
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         $toolId = (int)($_POST['tool_id'] ?? 0);
-        $issuedBy = trim($_POST['issued_by'] ?? '');
-        if (!$toolId || !$employeeId || $issuedBy === '') throw new RuntimeException('Employee, tool, and issuer name are required.');
+        $issuedBy = current_user()['full_name'];
+        if (!$toolId || !$employeeId) throw new RuntimeException('Employee and tool are required.');
         checkout_tool($toolId, $employeeId, $issuedBy, trim($_POST['notes'] ?? ''));
         flash('success', 'Tool checked out successfully. It is due by the end of today.');
         redirect('checkout.php');
@@ -46,7 +46,7 @@ $tools = $pdo->query("SELECT * FROM tools WHERE status='available' ORDER BY tool
 <form method="post">
 <input type="hidden" name="employee_id" value="<?= (int)$selected['id'] ?>">
 <label>Tool</label><select name="tool_id" required><option value="">Select an available tool</option><?php foreach ($tools as $tool): ?><option value="<?= (int)$tool['id'] ?>"><?= e($tool['tool_name']) ?> — <?= e($tool['internal_id']) ?> — <?= e($tool['tool_location']) ?></option><?php endforeach; ?></select>
-<label>Issued By</label><input name="issued_by" required placeholder="Clerk or attendant name">
+<label>Issued By</label><input value="<?= e(current_user()['full_name']) ?>" disabled><p class="muted">Recorded from the signed-in account.</p>
 <label>Checkout Notes</label><textarea name="notes" placeholder="Optional accessories, condition, or job assignment"></textarea>
 <p class="muted">Due: <?= e(date('F j, Y')) ?> by 11:59 PM</p>
 <button>Check Out Tool</button>
