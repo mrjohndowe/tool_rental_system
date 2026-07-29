@@ -62,3 +62,6 @@ Existing installations should import `database/locations_upgrade.sql`. A new **L
 
 ## Employee department upgrade
 For an existing installation, import `database/employee_department_upgrade.sql` in phpMyAdmin after making a database backup. This removes the employee work-email field, adds a required department field, and preserves existing employees with the temporary department `Unassigned` until you edit them.
+
+## Keep me logged in upgrade
+Existing installations should import `database/remember_login_upgrade.sql`, then replace the application files. The login page now has a **Keep me logged in on this device for 30 days** option. It stores a rotating, hashed login token in the database and a secure HTTP-only cookie on the device; it never stores the user's password. Logging out revokes the token immediately.
