@@ -8,6 +8,7 @@ const DB_NAME = 'tool_rental';
 const DB_USER = 'root';
 const DB_PASS = '';
 const TIMEZONE = 'America/Denver';
+const CHECKOUT_OPEN_TIME = '06:00:00';
 const CHECKOUT_CUTOFF_TIME = '17:00:00';
 const RETURN_DUE_TIME = '17:30:00';
 const DEVELEPER_NAME = "MrJohnDowe";

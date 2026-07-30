@@ -37,6 +37,11 @@ function checkout_cutoff_at(): DateTimeImmutable
     return new DateTimeImmutable(date('Y-m-d') . ' ' . CHECKOUT_CUTOFF_TIME, new DateTimeZone(TIMEZONE));
 }
 
+function checkout_open_time(): DateTimeImmutable
+{
+    return new DateTimeImmutable(date('Y-m-d') . CHECKOUT_OPEN_TIME, new DateTimeZone(TIMEZONE));
+}
+
 function return_due_at(): string
 {
     return date('Y-m-d') . ' ' . RETURN_DUE_TIME;
@@ -45,8 +50,18 @@ function return_due_at(): string
 function checkout_is_open(): bool
 {
     $now = new DateTimeImmutable('now', new DateTimeZone(TIMEZONE));
-    return $now < checkout_cutoff_at();
+
+    $open   = checkout_open_time();
+    $cutoff = checkout_cutoff_at();
+
+    return $now >= $open && $now < $cutoff;
 }
+
+/* function checkout_is_open(): bool
+{
+    $now = new DateTimeImmutable('now', new DateTimeZone(TIMEZONE));
+    return $now < checkout_cutoff_at();
+} */
 
 function checkout_cutoff_label(): string
 {
