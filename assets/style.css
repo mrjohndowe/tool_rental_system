@@ -1,7 +1,7 @@
 :root { font-family: Arial, sans-serif; color: #1f2937; background: #f3f4f6; }
 * { box-sizing: border-box; }
 body { margin: 0; }
-.topbar { background: #111827; color: #fff; padding: 18px 28px; display: flex; gap: 30px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.topbar { background: #111827; color: #fff; padding: 18px 28px; display: flow; gap: 30px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
 .topbar h1 { margin: 0 0 4px; font-size: 24px; }
 .topbar p { margin: 0; color: #cbd5e1; }
 nav { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -77,4 +77,20 @@ button, .button, input, select, textarea { min-height: 44px; }
     width: 5%;
     height: 5%;
     margin: 0;
+}
+/* Logo */
+
+.header-logo{
+    margin-left:auto;
+    display:flex;
+    align-items:center;
+    
+}
+
+.header-logo img{
+    height:100px;
+    width:auto;
+    display:block;
+    position:relative;
+    left:0;
 }

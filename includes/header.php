@@ -22,9 +22,16 @@ $current = basename($_SERVER['PHP_SELF']);
 </head>
 <body>
 <header class="topbar">
+    <div class="header-logo">
+        <a href="/mossrental/">
+            <img src="assets/images/logo.png"
+                alt="Company Logo">
+        </a>
+    </div>
     <div>
+       
         <h1><?= e(APP_NAME) ?></h1>
-        <p>Checkout closes at 3:00 PM. All issued tools are due back by 3:30 PM.</p>
+        <p>Checkout closes at 5:00 PM. All issued tools are due back by 5:30 PM.</p>
     </div>
     <nav>
         <a class="<?= $current === 'index.php' ? 'active' : '' ?>" href="index.php">Dashboard</a>
