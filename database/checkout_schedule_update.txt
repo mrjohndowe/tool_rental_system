@@ -1,0 +1,16 @@
+CHECKOUT SCHEDULE UPDATE
+
+No database import is required.
+
+Replace the application files with this updated version.
+
+Rules enforced:
+- New checkouts are allowed only before 3:00 PM.
+- At 3:00 PM and later, new checkout submissions are blocked server-side.
+- Tools checked out before cutoff are due back at 3:30 PM the same day.
+- Returns and all management pages remain available after cutoff.
+- Default timezone: America/Denver.
+
+Times can be changed in config.php:
+const CHECKOUT_CUTOFF_TIME = '15:00:00';
+const RETURN_DUE_TIME = '15:30:00';

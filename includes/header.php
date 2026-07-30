@@ -24,7 +24,7 @@ $current = basename($_SERVER['PHP_SELF']);
 <header class="topbar">
     <div>
         <h1><?= e(APP_NAME) ?></h1>
-        <p>All issued tools are due back by the end of the workday.</p>
+        <p>Checkout closes at 3:00 PM. All issued tools are due back by 3:30 PM.</p>
     </div>
     <nav>
         <a class="<?= $current === 'index.php' ? 'active' : '' ?>" href="index.php">Dashboard</a>

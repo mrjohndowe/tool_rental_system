@@ -32,10 +32,33 @@ function location_label(array $location): string
     return implode(' - ', array_filter($parts));
 }
 
-function end_of_workday(): string
+function checkout_cutoff_at(): DateTimeImmutable
 {
-    return date('Y-m-d 23:59:59');
+    return new DateTimeImmutable(date('Y-m-d') . ' ' . CHECKOUT_CUTOFF_TIME, new DateTimeZone(TIMEZONE));
 }
+
+function return_due_at(): string
+{
+    return date('Y-m-d') . ' ' . RETURN_DUE_TIME;
+}
+
+function checkout_is_open(): bool
+{
+    $now = new DateTimeImmutable('now', new DateTimeZone(TIMEZONE));
+    return $now < checkout_cutoff_at();
+}
+
+function checkout_cutoff_label(): string
+{
+    return checkout_cutoff_at()->format('g:i A');
+}
+
+function return_due_label(): string
+{
+    $due = new DateTimeImmutable(date('Y-m-d') . ' ' . RETURN_DUE_TIME, new DateTimeZone(TIMEZONE));
+    return $due->format('g:i A');
+}
+
 
 function tool_status_label(string $status): string
 {
@@ -50,6 +73,7 @@ function tool_status_label(string $status): string
 
 function checkout_many(array $toolIds, int $employeeId, string $issuedBy, string $notes = '', array $accessoryQuantities = [], ?int $bundleId = null): int
 {
+    if (!checkout_is_open()) throw new RuntimeException('Tool checkout is closed. New checkouts are not permitted at or after ' . checkout_cutoff_label() . '.');
     $toolIds = array_values(array_unique(array_filter(array_map('intval', $toolIds))));
     if (!$toolIds) throw new RuntimeException('Select at least one tool.');
     $pdo = db(); $pdo->beginTransaction();
@@ -61,10 +85,10 @@ function checkout_many(array $toolIds, int $employeeId, string $issuedBy, string
         if(count($tools)!==count($toolIds)) throw new RuntimeException('One or more selected tools were not found.');
         foreach($tools as $tool) if($tool['status']!=='available') throw new RuntimeException($tool['tool_name'].' ('.$tool['internal_id'].') is not available.');
         $batch=$pdo->prepare('INSERT INTO checkout_batches(employee_id,issued_by,checked_out_at,due_at,bundle_id,checkout_notes,status) VALUES(?,?,NOW(),?,?,?,"open")');
-        $batch->execute([$employeeId,$issuedBy,end_of_workday(),$bundleId?:null,$notes]); $batchId=(int)$pdo->lastInsertId();
+        $batch->execute([$employeeId,$issuedBy,return_due_at(),$bundleId?:null,$notes]); $batchId=(int)$pdo->lastInsertId();
         $insert=$pdo->prepare('INSERT INTO checkouts(batch_id,tool_id,employee_id,issued_by,checked_out_at,due_at,checkout_notes,status) VALUES(?,?,?, ?,NOW(),?, ?,"open")');
         $update=$pdo->prepare('UPDATE tools SET status="checked_out" WHERE id=?');
-        foreach($toolIds as $toolId){$insert->execute([$batchId,$toolId,$employeeId,$issuedBy,end_of_workday(),$notes]);$update->execute([$toolId]);}
+        foreach($toolIds as $toolId){$insert->execute([$batchId,$toolId,$employeeId,$issuedBy,return_due_at(),$notes]);$update->execute([$toolId]);}
         if($accessoryQuantities){
             $aGet=$pdo->prepare('SELECT * FROM accessories WHERE id=? AND active=1 FOR UPDATE');
             $aInsert=$pdo->prepare('INSERT INTO checkout_accessories(batch_id,accessory_id,quantity) VALUES(?,?,?)');
@@ -125,5 +149,5 @@ function auto_copyright($year = 'auto'){
     if(INTVAL($year) > DATE('Y'))
     { 
         ECHO DATE('Y'); 
-    } 
-} 
+    }
+}

@@ -24,7 +24,9 @@ Sign in and use **Users** to edit the administrator account and change this pass
 - Add an employee from checkout and immediately issue a tool.
 - Required employee department and optional badge number.
 - Tool serial number, internal ID, and location fields.
-- Every checkout is due at 11:59:59 PM on the checkout date.
+- New tool checkouts are blocked at and after 3:00 PM (America/Denver).
+- Every checkout is due at 3:30 PM on the checkout date.
+- Returns and administrative pages remain available after the checkout cutoff.
 - Overdue highlighting and return condition tracking.
 - Damaged tools automatically enter Maintenance status.
 
@@ -65,3 +67,16 @@ For an existing installation, import `database/employee_department_upgrade.sql` 
 
 ## Keep me logged in upgrade
 Existing installations should import `database/remember_login_upgrade.sql`, then replace the application files. The login page now has a **Keep me logged in on this device for 30 days** option. It stores a rotating, hashed login token in the database and a secure HTTP-only cookie on the device; it never stores the user's password. Logging out revokes the token immediately.
+
+
+## Checkout cutoff and return deadline
+No database upgrade is required for this schedule change. Replace the application files with this version. The checkout cutoff is enforced both in the interface and in the server-side checkout function.
+
+The default schedule is configured in `config.php`:
+
+```php
+const CHECKOUT_CUTOFF_TIME = '15:00:00';
+const RETURN_DUE_TIME = '15:30:00';
+```
+
+The application timezone is `America/Denver` by default.
