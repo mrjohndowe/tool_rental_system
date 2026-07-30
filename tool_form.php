@@ -1,18 +1,51 @@
 <?php
-require __DIR__.'/includes/header.php'; $pdo=db(); $id=(int)($_GET['id']??$_POST['id']??0);
-$tool=['tool_name'=>'','category'=>'','manufacturer'=>'','model_number'=>'','serial_number'=>'','internal_id'=>'','location_id'=>'','tool_location'=>'','status'=>'available','notes'=>''];
-if($id){$s=$pdo->prepare('SELECT * FROM tools WHERE id=?');$s->execute([$id]);$tool=$s->fetch()?:$tool;}
-$locations=$pdo->query('SELECT * FROM tool_locations WHERE active=1 OR id='.(int)($tool['location_id']?:0).' ORDER BY location_name,area,shelf')->fetchAll();
-if($_SERVER['REQUEST_METHOD']==='POST'){
- try{$locationId=(int)($_POST['location_id']??0);$ls=$pdo->prepare('SELECT * FROM tool_locations WHERE id=?');$ls->execute([$locationId]);$loc=$ls->fetch();if(!$loc)throw new RuntimeException('Select a valid tool location.');$locationText=location_label($loc);
- $vals=[trim($_POST['tool_name']??''),trim($_POST['category']??''),trim($_POST['manufacturer']??''),trim($_POST['model_number']??''),trim($_POST['serial_number']??''),trim($_POST['internal_id']??''),$locationId,$locationText,$_POST['status']??'available',trim($_POST['notes']??'')];
- if($vals[0]===''||$vals[4]===''||$vals[5]==='')throw new RuntimeException('Tool name, serial number, and internal ID are required.');
- if($id){$s=$pdo->prepare('UPDATE tools SET tool_name=?,category=?,manufacturer=?,model_number=?,serial_number=?,internal_id=?,location_id=?,tool_location=?,status=?,notes=? WHERE id=?');$s->execute([...$vals,$id]);}else{$s=$pdo->prepare('INSERT INTO tools(tool_name,category,manufacturer,model_number,serial_number,internal_id,location_id,tool_location,status,notes) VALUES(?,?,?,?,?,?,?,?,?,?)');$s->execute($vals);} flash('success','Tool saved.');redirect('tools.php');
- }catch(Throwable $e){flash('error',str_contains($e->getMessage(),'Duplicate')?'Serial number or internal ID already exists.':$e->getMessage());redirect('tool_form.php'.($id?'?id='.$id:''));}
+require __DIR__ . '/includes/header.php';
+$pdo = db();
+$id = (int)($_GET['id'] ?? $_POST['id'] ?? 0);
+$tool = ['tool_name' => '', 'category' => '', 'manufacturer' => '', 'model_number' => '', 'serial_number' => '', 'internal_id' => '', 'location_id' => '', 'tool_location' => '', 'status' => 'available', 'notes' => ''];
+if ($id) {
+    $s = $pdo->prepare('SELECT * FROM tools WHERE id=?');
+    $s->execute([$id]);
+    $tool = $s->fetch() ?: $tool;
+}
+$locations = $pdo->query('SELECT * FROM tool_locations WHERE active=1 OR id=' . (int)($tool['location_id'] ?: 0) . ' ORDER BY location_name,area,shelf')->fetchAll();
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    try {
+        $locationId = (int)($_POST['location_id'] ?? 0);
+        $ls = $pdo->prepare('SELECT * FROM tool_locations WHERE id=?');
+        $ls->execute([$locationId]);
+        $loc = $ls->fetch();
+        if (!$loc) throw new RuntimeException('Select a valid tool location.');
+        $locationText = location_label($loc);
+        $vals = [trim($_POST['tool_name'] ?? ''), trim($_POST['category'] ?? ''), trim($_POST['manufacturer'] ?? ''), trim($_POST['model_number'] ?? ''), trim($_POST['serial_number'] ?? ''), trim($_POST['internal_id'] ?? ''), $locationId, $locationText, $_POST['status'] ?? 'available', trim($_POST['notes'] ?? '')];
+        if ($vals[0] === '' || $vals[4] === '' || $vals[5] === '') throw new RuntimeException('Tool name, serial number, and internal ID are required.');
+        if ($id) {
+            $s = $pdo->prepare('UPDATE tools SET tool_name=?,category=?,manufacturer=?,model_number=?,serial_number=?,internal_id=?,location_id=?,tool_location=?,status=?,notes=? WHERE id=?');
+            $s->execute([...$vals, $id]);
+        } else {
+            $s = $pdo->prepare('INSERT INTO tools(tool_name,category,manufacturer,model_number,serial_number,internal_id,location_id,tool_location,status,notes) VALUES(?,?,?,?,?,?,?,?,?,?)');
+            $s->execute($vals);
+        }
+        flash('success', 'Tool saved.');
+        redirect('tools.php');
+    } catch (Throwable $e) {
+        flash('error', str_contains($e->getMessage(), 'Duplicate') ? 'Serial number or internal ID already exists.' : $e->getMessage());
+        redirect('tool_form.php' . ($id ? '?id=' . $id : ''));
+    }
 }
 ?>
-<div class="card"><h2><?= $id?'Edit':'Add' ?> Tool</h2><?php if(!$locations):?><div class="alert error">Add a saved location and shelf before adding a tool. <a href="locations.php">Manage Locations</a></div><?php endif;?><form method="post"><input type="hidden" name="id" value="<?= $id ?>">
-<div class="grid two"><div><label>Tool Name</label><input name="tool_name" required value="<?= e($tool['tool_name']) ?>"><label>Category</label><input name="category" value="<?= e($tool['category']) ?>"><label>Manufacturer</label><input name="manufacturer" value="<?= e($tool['manufacturer']) ?>"><label>Model Number</label><input name="model_number" value="<?= e($tool['model_number']) ?>"></div>
-<div><label>Serial Number</label><input name="serial_number" required value="<?= e($tool['serial_number']) ?>"><label>Internal ID Number</label><input name="internal_id" required value="<?= e($tool['internal_id']) ?>"><label>Tool Location and Shelf</label><select name="location_id" required><option value="">Select location...</option><?php foreach($locations as $l):?><option value="<?=(int)$l['id']?>" <?=((int)$tool['location_id']===(int)$l['id'])?'selected':''?>><?=e(location_label($l))?></option><?php endforeach;?></select><p class="muted"><a href="locations.php">Add or edit locations and shelves</a></p><label>Status</label><select name="status"><?php foreach(['available','checked_out','maintenance','retired'] as $s): ?><option value="<?= $s ?>" <?= $tool['status']===$s?'selected':'' ?>><?= e(tool_status_label($s)) ?></option><?php endforeach; ?></select></div></div>
-<label>Notes</label><textarea name="notes"><?= e($tool['notes']) ?></textarea><div class="actions"><button <?=$locations?'':'disabled'?>>Save Tool</button><a class="button secondary" href="tools.php">Cancel</a></div></form></div>
-<?php require __DIR__.'/includes/footer.php'; ?>
+<div class="card">
+    <h2><?= $id ? 'Edit' : 'Add' ?> Tool</h2><?php if (!$locations): ?><div class="alert error">Add a saved location and shelf before adding a tool. <a href="locations.php">Manage Locations</a></div><?php endif; ?><form method="post"><input type="hidden" name="id" value="<?= $id ?>">
+        <div class="grid two">
+            <div><label>Tool Name</label><input name="tool_name" required value="<?= e($tool['tool_name']) ?>"><label>Category</label><input name="category" value="<?= e($tool['category']) ?>"><label>Manufacturer</label><input name="manufacturer" value="<?= e($tool['manufacturer']) ?>"><label>Model Number</label><input name="model_number" value="<?= e($tool['model_number']) ?>"></div>
+            <div><label>Serial Number</label><input name="serial_number" required value="<?= e($tool['serial_number']) ?>"><label>Internal ID Number</label><input name="internal_id" required value="<?= e($tool['internal_id']) ?>"><label>Tool Location and Shelf</label><select name="location_id" required>
+                    <option value="">Select location...</option><?php foreach ($locations as $l): ?><option value="<?= (int)$l['id'] ?>" <?= ((int)$tool['location_id'] === (int)$l['id']) ? 'selected' : '' ?>><?= e(location_label($l)) ?></option><?php endforeach; ?>
+                </select>
+                <p class="muted"><a href="locations.php">Add or edit locations and shelves</a></p><label>Status</label><select name="status"><?php foreach (['available', 'checked_out', 'maintenance', 'retired'] as $s): ?><option value="<?= $s ?>" <?= $tool['status'] === $s ? 'selected' : '' ?>><?= e(tool_status_label($s)) ?></option><?php endforeach; ?></select>
+            </div>
+        </div>
+        <label>Notes</label><textarea name="notes"><?= e($tool['notes']) ?></textarea>
+        <div class="actions"><button <?= $locations ? '' : 'disabled' ?>>Save Tool</button><a class="button secondary" href="tools.php">Cancel</a></div>
+    </form>
+</div>
+<?php require __DIR__ . '/includes/footer.php'; ?>

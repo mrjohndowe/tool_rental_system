@@ -1,22 +1,80 @@
 <?php
-require __DIR__.'/includes/header.php'; $pdo=db(); $search=trim($_GET['employee_search']??''); $employeeId=(int)($_GET['employee_id']??$_POST['employee_id']??0); $checkoutOpen=checkout_is_open();
-if($_SERVER['REQUEST_METHOD']==='POST'){
- try{$toolIds=$_POST['tool_ids']??[];$accessories=$_POST['accessories']??[];$bundleId=(int)($_POST['bundle_id']??0);$batchId=checkout_many($toolIds,$employeeId,current_user()['full_name'],trim($_POST['notes']??''),$accessories,$bundleId?:null);flash('success','Checkout #'.$batchId.' created with '.count($toolIds).' tool(s). Everything is due today by '.return_due_label().'.');redirect('checkout.php');}
- catch(Throwable $e){flash('error',$e->getMessage());redirect('checkout.php?employee_id='.$employeeId);}
+require __DIR__ . '/includes/header.php';
+$pdo = db();
+$search = trim($_GET['employee_search'] ?? '');
+$employeeId = (int)($_GET['employee_id'] ?? $_POST['employee_id'] ?? 0);
+$checkoutOpen = checkout_is_open();
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    try {
+        $toolIds = $_POST['tool_ids'] ?? [];
+        $accessories = $_POST['accessories'] ?? [];
+        $bundleId = (int)($_POST['bundle_id'] ?? 0);
+        $batchId = checkout_many($toolIds, $employeeId, current_user()['full_name'], trim($_POST['notes'] ?? ''), $accessories, $bundleId ?: null);
+        flash('success', 'Checkout #' . $batchId . ' created with ' . count($toolIds) . ' tool(s). Everything is due today by ' . return_due_label() . '.');
+        redirect('checkout.php');
+    } catch (Throwable $e) {
+        flash('error', $e->getMessage());
+        redirect('checkout.php?employee_id=' . $employeeId);
+    }
 }
-$employees=[];if($search!==''){$st=$pdo->prepare('SELECT * FROM employees WHERE active=1 AND (name LIKE ? OR badge_number LIKE ? OR department LIKE ?) ORDER BY name LIMIT 20');$term='%'.$search.'%';$st->execute([$term,$term,$term]);$employees=$st->fetchAll();}
-$selected=null;if($employeeId){$st=$pdo->prepare('SELECT * FROM employees WHERE id=?');$st->execute([$employeeId]);$selected=$st->fetch();}
-$tools=$pdo->query("SELECT * FROM tools WHERE status='available' ORDER BY tool_name,internal_id")->fetchAll();
-$accessories=$pdo->query("SELECT * FROM accessories WHERE active=1 AND quantity_available>0 ORDER BY accessory_name")->fetchAll();
-$bundles=$pdo->query("SELECT b.*,GROUP_CONCAT(bt.tool_id ORDER BY bt.tool_id) tool_ids,COUNT(bt.tool_id) tool_count FROM bundles b LEFT JOIN bundle_tools bt ON bt.bundle_id=b.id WHERE b.active=1 GROUP BY b.id ORDER BY b.bundle_name")->fetchAll();
+$employees = [];
+if ($search !== '') {
+    $st = $pdo->prepare('SELECT * FROM employees WHERE active=1 AND (name LIKE ? OR badge_number LIKE ? OR department LIKE ?) ORDER BY name LIMIT 20');
+    $term = '%' . $search . '%';
+    $st->execute([$term, $term, $term]);
+    $employees = $st->fetchAll();
+}
+$selected = null;
+if ($employeeId) {
+    $st = $pdo->prepare('SELECT * FROM employees WHERE id=?');
+    $st->execute([$employeeId]);
+    $selected = $st->fetch();
+}
+$tools = $pdo->query("SELECT * FROM tools WHERE status='available' ORDER BY tool_name,internal_id")->fetchAll();
+$accessories = $pdo->query("SELECT * FROM accessories WHERE active=1 AND quantity_available>0 ORDER BY accessory_name")->fetchAll();
+$bundles = $pdo->query("SELECT b.*,GROUP_CONCAT(bt.tool_id ORDER BY bt.tool_id) tool_ids,COUNT(bt.tool_id) tool_count FROM bundles b LEFT JOIN bundle_tools bt ON bt.bundle_id=b.id WHERE b.active=1 GROUP BY b.id ORDER BY b.bundle_name")->fetchAll();
 ?>
-<div class="grid two"><div class="card"><h2>1. Find Employee</h2><form method="get" class="search-row"><div><label>Name, badge number, or department</label><input name="employee_search" value="<?= e($search) ?>" autofocus></div><button>Search</button></form>
-<?php if($search!==''):?><div class="table-wrap" style="margin-top:15px"><table><tbody><?php foreach($employees as $emp):?><tr><td><strong><?=e($emp['name'])?></strong><br><span class="muted"><?=e($emp['badge_number']?:'No badge')?> · <?=e($emp['department'])?></span></td><td><a class="button" href="checkout.php?employee_id=<?=(int)$emp['id']?>">Select</a></td></tr><?php endforeach;?><?php if(!$employees):?><tr><td>No roster match found.</td></tr><?php endif;?></tbody></table></div><div class="actions"><a class="button secondary" href="employee_form.php?return_to=checkout&prefill=<?=urlencode($search)?>">Add New Employee and Issue Tools</a></div><?php endif;?></div>
-<div class="card"><h2>2. Issue Tools and Accessories</h2><?php if(!$checkoutOpen):?><div class="alert error"><strong>Checkout closed.</strong> New tools cannot be checked out at or after <?=e(checkout_cutoff_label())?>. Returns are still allowed. The next checkout period begins tomorrow.</div><?php endif;?><?php if($selected):?><p>Issuing to <strong><?=e($selected['name'])?></strong> <?=$selected['badge_number']?'(Badge '.e($selected['badge_number']).')':''?><br><span class="muted">Department: <?=e($selected['department'])?></span></p><form method="post" id="checkout-form"><input type="hidden" name="employee_id" value="<?=(int)$selected['id']?>">
-<label>Optional Bundle</label><select name="bundle_id" id="bundle-select"><option value="">No bundle — choose tools manually</option><?php foreach($bundles as $b):?><option value="<?=(int)$b['id']?>" data-tools="<?=e($b['tool_ids']??'')?>"><?=e($b['bundle_name'])?> (<?=(int)$b['tool_count']?> tools)</option><?php endforeach;?></select><p class="muted">Selecting a bundle checks every currently available tool in that bundle.</p>
-<label>Available Tools — select one or more</label><div class="selection-list"><?php if(!$tools):?><p>No tools are currently available.</p><?php endif;foreach($tools as $tool):?><label class="select-item"><input type="checkbox" name="tool_ids[]" value="<?=(int)$tool['id']?>"><span><strong><?=e($tool['tool_name'])?></strong><br><small><?=e($tool['internal_id'])?> · <?=e($tool['serial_number'])?> · <?=e($tool['tool_location'])?></small></span></label><?php endforeach;?></div>
-<label>Optional Accessories</label><div class="selection-list"><?php if(!$accessories):?><p>No accessories are currently available.</p><?php endif;foreach($accessories as $a):?><div class="select-item accessory-row"><span><strong><?=e($a['accessory_name'])?></strong><br><small><?=e($a['internal_id']?:'No ID')?> · <?=e($a['tool_location']?:'No location')?> · <?=(int)$a['quantity_available']?> available</small></span><input type="number" name="accessories[<?=(int)$a['id']?>]" min="0" max="<?=(int)$a['quantity_available']?>" value="0" aria-label="Quantity"></div><?php endforeach;?></div>
-<label>Issued By</label><input value="<?=e(current_user()['full_name'])?>" disabled><label>Checkout Notes</label><textarea name="notes" placeholder="Condition, job assignment, or special instructions"></textarea><p class="muted"><strong>Checkout cutoff:</strong> <?=e(checkout_cutoff_label())?> &nbsp;·&nbsp; <strong>Due:</strong> <?=e(date('F j, Y'))?> by <?=e(return_due_label())?></p><button <?=$checkoutOpen?'':'disabled aria-disabled="true" title="Checkout is closed after 3:00 PM"'?>><?=$checkoutOpen?'Check Out Selected Inventory':'Checkout Closed'?></button></form>
-<script>document.getElementById('bundle-select')?.addEventListener('change',function(){const ids=(this.options[this.selectedIndex].dataset.tools||'').split(',').filter(Boolean);document.querySelectorAll('input[name="tool_ids[]"]').forEach(cb=>cb.checked=ids.includes(cb.value));});</script>
-<?php else:?><p class="muted">Search for and select an employee first.</p><?php endif;?></div></div>
-<?php require __DIR__.'/includes/footer.php';?>
+<div class="grid two">
+    <div class="card">
+        <h2>1. Find Employee</h2>
+        <form method="get" class="search-row">
+            <div><label>Name, badge number, or department</label><input name="employee_search" value="<?= e($search) ?>" autofocus></div><button>Search</button>
+        </form>
+        <?php if ($search !== ''): ?><div class="table-wrap" style="margin-top:15px">
+                <table>
+                    <tbody><?php foreach ($employees as $emp): ?><tr>
+                                <td><strong><?= e($emp['name']) ?></strong><br><span class="muted"><?= e($emp['badge_number'] ?: 'No badge') ?> · <?= e($emp['department']) ?></span></td>
+                                <td><a class="button" href="checkout.php?employee_id=<?= (int)$emp['id'] ?>">Select</a></td>
+                            </tr><?php endforeach; ?><?php if (!$employees): ?><tr>
+                                <td>No roster match found.</td>
+                            </tr><?php endif; ?></tbody>
+                </table>
+            </div>
+            <div class="actions"><a class="button secondary" href="employee_form.php?return_to=checkout&prefill=<?= urlencode($search) ?>">Add New Employee and Issue Tools</a></div><?php endif; ?>
+    </div>
+    <div class="card">
+        <h2>2. Issue Tools and Accessories</h2><?php if (!$checkoutOpen): ?><div class="alert error"><strong>Checkout closed.</strong> New tools cannot be checked out at or after <?= e(checkout_cutoff_label()) ?>. Returns are still allowed. The next checkout period begins tomorrow.</div><?php endif; ?><?php if ($selected): ?><p>Issuing to <strong><?= e($selected['name']) ?></strong> <?= $selected['badge_number'] ? '(Badge ' . e($selected['badge_number']) . ')' : '' ?><br><span class="muted">Department: <?= e($selected['department']) ?></span></p>
+            <form method="post" id="checkout-form"><input type="hidden" name="employee_id" value="<?= (int)$selected['id'] ?>">
+                <label>Optional Bundle</label><select name="bundle_id" id="bundle-select">
+                    <option value="">No bundle — choose tools manually</option><?php foreach ($bundles as $b): ?><option value="<?= (int)$b['id'] ?>" data-tools="<?= e($b['tool_ids'] ?? '') ?>"><?= e($b['bundle_name']) ?> (<?= (int)$b['tool_count'] ?> tools)</option><?php endforeach; ?>
+                </select>
+                <p class="muted">Selecting a bundle checks every currently available tool in that bundle.</p>
+                <label>Available Tools — select one or more</label>
+                <div class="selection-list"><?php if (!$tools): ?><p>No tools are currently available.</p><?php endif;
+                                                                                                                                                                                                                                                                                                                    foreach ($tools as $tool): ?><label class="select-item"><input type="checkbox" name="tool_ids[]" value="<?= (int)$tool['id'] ?>"><span><strong><?= e($tool['tool_name']) ?></strong><br><small><?= e($tool['internal_id']) ?> · <?= e($tool['serial_number']) ?> · <?= e($tool['tool_location']) ?></small></span></label><?php endforeach; ?></div>
+                <label>Optional Accessories</label>
+                <div class="selection-list"><?php if (!$accessories): ?><p>No accessories are currently available.</p><?php endif;
+                                                                                                                                                                                                                                                                                                                    foreach ($accessories as $a): ?><div class="select-item accessory-row"><span><strong><?= e($a['accessory_name']) ?></strong><br><small><?= e($a['internal_id'] ?: 'No ID') ?> · <?= e($a['tool_location'] ?: 'No location') ?> · <?= (int)$a['quantity_available'] ?> available</small></span><input type="number" name="accessories[<?= (int)$a['id'] ?>]" min="0" max="<?= (int)$a['quantity_available'] ?>" value="0" aria-label="Quantity"></div><?php endforeach; ?></div>
+                <label>Issued By</label><input value="<?= e(current_user()['full_name']) ?>" disabled><label>Checkout Notes</label><textarea name="notes" placeholder="Condition, job assignment, or special instructions"></textarea>
+                <p class="muted"><strong>Checkout cutoff:</strong> <?= e(checkout_cutoff_label()) ?> &nbsp;·&nbsp; <strong>Due:</strong> <?= e(date('F j, Y')) ?> by <?= e(return_due_label()) ?></p><button <?= $checkoutOpen ? '' : 'disabled aria-disabled="true" title="Checkout is closed after 3:00 PM"' ?>><?= $checkoutOpen ? 'Check Out Selected Inventory' : 'Checkout Closed' ?></button>
+            </form>
+            <script>
+                document.getElementById('bundle-select')?.addEventListener('change', function() {
+                    const ids = (this.options[this.selectedIndex].dataset.tools || '').split(',').filter(Boolean);
+                    document.querySelectorAll('input[name="tool_ids[]"]').forEach(cb => cb.checked = ids.includes(cb.value));
+                });
+            </script>
+        <?php else: ?><p class="muted">Search for and select an employee first.</p><?php endif; ?>
+    </div>
+</div>
+<?php require __DIR__ . '/includes/footer.php'; ?>

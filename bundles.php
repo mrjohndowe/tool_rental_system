@@ -1,1 +1,28 @@
-<?php require __DIR__.'/includes/header.php';$rows=db()->query("SELECT b.*,COUNT(bt.tool_id) tool_count,GROUP_CONCAT(CONCAT(t.tool_name,' [',t.internal_id,']') ORDER BY t.tool_name SEPARATOR ', ') tool_list FROM bundles b LEFT JOIN bundle_tools bt ON bt.bundle_id=b.id LEFT JOIN tools t ON t.id=bt.tool_id GROUP BY b.id ORDER BY b.bundle_name")->fetchAll();?><div class="card"><div class="actions" style="justify-content:space-between"><h2>Tool Bundles</h2><a class="button" href="bundle_form.php">Create Bundle</a></div><p class="muted">A bundle is a reusable selection of individually tracked tools. Tools keep their own serial numbers, IDs, locations, and availability.</p></div><div class="table-wrap" style="margin-top:18px"><table><thead><tr><th>Bundle</th><th>Tools</th><th>Status</th><th></th></tr></thead><tbody><?php if(!$rows):?><tr><td colspan="4">No bundles created.</td></tr><?php endif;foreach($rows as $r):?><tr><td><strong><?=e($r['bundle_name'])?></strong><br><span class="muted"><?=e($r['description']??'')?></span></td><td><?=(int)$r['tool_count']?><br><span class="muted"><?=e($r['tool_list']?:'No tools assigned')?></span></td><td><span class="badge <?=$r['active']?'available':'retired'?>"><?=$r['active']?'Active':'Inactive'?></span></td><td><a class="button secondary" href="bundle_form.php?id=<?=(int)$r['id']?>">Edit</a></td></tr><?php endforeach;?></tbody></table></div><?php require __DIR__.'/includes/footer.php';?>
+<?php require __DIR__ . '/includes/header.php';
+$rows = db()->query("SELECT b.*,COUNT(bt.tool_id) tool_count,GROUP_CONCAT(CONCAT(t.tool_name,' [',t.internal_id,']') ORDER BY t.tool_name SEPARATOR ', ') tool_list FROM bundles b LEFT JOIN bundle_tools bt ON bt.bundle_id=b.id LEFT JOIN tools t ON t.id=bt.tool_id GROUP BY b.id ORDER BY b.bundle_name")->fetchAll(); ?><div class="card">
+    <div class="actions" style="justify-content:space-between">
+        <h2>Tool Bundles</h2><a class="button" href="bundle_form.php">Create Bundle</a>
+    </div>
+    <p class="muted">A bundle is a reusable selection of individually tracked tools. Tools keep their own serial numbers, IDs, locations, and availability.</p>
+</div>
+<div class="table-wrap" style="margin-top:18px">
+    <table>
+        <thead>
+            <tr>
+                <th>Bundle</th>
+                <th>Tools</th>
+                <th>Status</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody><?php if (!$rows): ?><tr>
+                    <td colspan="4">No bundles created.</td>
+                </tr><?php endif;
+                    foreach ($rows as $r): ?><tr>
+                    <td><strong><?= e($r['bundle_name']) ?></strong><br><span class="muted"><?= e($r['description'] ?? '') ?></span></td>
+                    <td><?= (int) $r['tool_count'] ?><br><span class="muted"><?= e($r['tool_list'] ?: 'No tools assigned') ?></span></td>
+                    <td><span class="badge <?= $r['active'] ? 'available' : 'retired' ?>"><?= $r['active'] ? 'Active' : 'Inactive' ?></span></td>
+                    <td><a class="button secondary" href="bundle_form.php?id=<?= (int) $r['id'] ?>">Edit</a></td>
+                </tr><?php endforeach; ?></tbody>
+    </table>
+</div><?php require __DIR__ . '/includes/footer.php'; ?>

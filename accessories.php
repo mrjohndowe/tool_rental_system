@@ -1,7 +1,76 @@
 <?php
-require __DIR__.'/includes/header.php';$pdo=db();$id=(int)($_GET['id']??$_POST['id']??0);
-$edit=null;if($id){$s=$pdo->prepare('SELECT * FROM accessories WHERE id=?');$s->execute([$id]);$edit=$s->fetch();}
-$locations=$pdo->query('SELECT * FROM tool_locations WHERE active=1 OR id='.(int)($edit['location_id']??0).' ORDER BY location_name,area,shelf')->fetchAll();
-if($_SERVER['REQUEST_METHOD']==='POST'){try{$name=trim($_POST['accessory_name']??'');$total=max(0,(int)($_POST['quantity_total']??0));$available=max(0,(int)($_POST['quantity_available']??$total));$locationId=(int)($_POST['location_id']??0);$ls=$pdo->prepare('SELECT * FROM tool_locations WHERE id=?');$ls->execute([$locationId]);$loc=$ls->fetch();if(!$loc)throw new RuntimeException('Select a valid accessory location.');$locationText=location_label($loc);if($name==='')throw new RuntimeException('Accessory name is required.');if($available>$total)throw new RuntimeException('Available quantity cannot exceed total quantity.');if($id){$s=$pdo->prepare('UPDATE accessories SET accessory_name=?,internal_id=?,location_id=?,tool_location=?,quantity_total=?,quantity_available=?,active=?,notes=? WHERE id=?');$s->execute([$name,trim($_POST['internal_id']??'')?:null,$locationId,$locationText,$total,$available,isset($_POST['active'])?1:0,trim($_POST['notes']??''),$id]);}else{$s=$pdo->prepare('INSERT INTO accessories(accessory_name,internal_id,location_id,tool_location,quantity_total,quantity_available,active,notes) VALUES(?,?,?,?,?,?,?,?)');$s->execute([$name,trim($_POST['internal_id']??'')?:null,$locationId,$locationText,$total,$available,1,trim($_POST['notes']??'')]);}flash('success','Accessory saved.');redirect('accessories.php');}catch(Throwable $e){flash('error',$e->getMessage());redirect('accessories.php'.($id?'?id='.$id:''));}}
-$rows=$pdo->query('SELECT * FROM accessories ORDER BY accessory_name')->fetchAll();
-?><div class="grid two"><div class="card"><h2><?=$edit?'Edit':'Add'?> Accessory</h2><?php if(!$locations):?><div class="alert error">Add a location and shelf first. <a href="locations.php">Manage Locations</a></div><?php endif;?><form method="post"><?php if($edit):?><input type="hidden" name="id" value="<?=$id?>"><?php endif;?><label>Name</label><input name="accessory_name" required value="<?=e($edit['accessory_name']??'')?>"><label>Internal ID (optional)</label><input name="internal_id" value="<?=e($edit['internal_id']??'')?>"><label>Location and Shelf</label><select name="location_id" required><option value="">Select location...</option><?php foreach($locations as $l):?><option value="<?=(int)$l['id']?>" <?=((int)($edit['location_id']??0)===(int)$l['id'])?'selected':''?>><?=e(location_label($l))?></option><?php endforeach;?></select><p class="muted"><a href="locations.php">Add or edit locations and shelves</a></p><div class="grid two"><div><label>Total Quantity</label><input type="number" min="0" name="quantity_total" value="<?=e((string)($edit['quantity_total']??1))?>"></div><div><label>Available Quantity</label><input type="number" min="0" name="quantity_available" value="<?=e((string)($edit['quantity_available']??1))?>"></div></div><label>Notes</label><textarea name="notes"><?=e($edit['notes']??'')?></textarea><?php if($edit):?><label><input type="checkbox" name="active" <?=$edit['active']?'checked':''?>> Active</label><?php endif;?><button <?=$locations?'':'disabled'?>>Save Accessory</button></form></div><div class="card"><h2>Accessory Inventory</h2><div class="table-wrap"><table><thead><tr><th>Accessory</th><th>Location / Shelf</th><th>Available</th><th></th></tr></thead><tbody><?php foreach($rows as $r):?><tr><td><strong><?=e($r['accessory_name'])?></strong><br><span class="muted"><?=e($r['internal_id']?:'No internal ID')?></span></td><td><?=e($r['tool_location']?:'—')?></td><td><?=(int)$r['quantity_available']?> / <?=(int)$r['quantity_total']?></td><td><a class="button secondary" href="accessories.php?id=<?=(int)$r['id']?>">Edit</a></td></tr><?php endforeach;?></tbody></table></div></div></div><?php require __DIR__.'/includes/footer.php';?>
+require __DIR__ . '/includes/header.php';
+$pdo = db();
+$id = (int) ($_GET['id'] ?? $_POST['id'] ?? 0);
+$edit = null;
+if ($id) {
+    $s = $pdo->prepare('SELECT * FROM accessories WHERE id=?');
+    $s->execute([$id]);
+    $edit = $s->fetch();
+}
+$locations = $pdo->query('SELECT * FROM tool_locations WHERE active=1 OR id=' . (int) ($edit['location_id'] ?? 0) . ' ORDER BY location_name,area,shelf')->fetchAll();
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    try {
+        $name = trim($_POST['accessory_name'] ?? '');
+        $total = max(0, (int) ($_POST['quantity_total'] ?? 0));
+        $available = max(0, (int) ($_POST['quantity_available'] ?? $total));
+        $locationId = (int) ($_POST['location_id'] ?? 0);
+        $ls = $pdo->prepare('SELECT * FROM tool_locations WHERE id=?');
+        $ls->execute([$locationId]);
+        $loc = $ls->fetch();
+        if (!$loc)
+            throw new RuntimeException('Select a valid accessory location.');
+        $locationText = location_label($loc);
+        if ($name === '')
+            throw new RuntimeException('Accessory name is required.');
+        if ($available > $total)
+            throw new RuntimeException('Available quantity cannot exceed total quantity.');
+        if ($id) {
+            $s = $pdo->prepare('UPDATE accessories SET accessory_name=?,internal_id=?,location_id=?,tool_location=?,quantity_total=?,quantity_available=?,active=?,notes=? WHERE id=?');
+            $s->execute([$name, trim($_POST['internal_id'] ?? '') ?: null, $locationId, $locationText, $total, $available, isset($_POST['active']) ? 1 : 0, trim($_POST['notes'] ?? ''), $id]);
+        } else {
+            $s = $pdo->prepare('INSERT INTO accessories(accessory_name,internal_id,location_id,tool_location,quantity_total,quantity_available,active,notes) VALUES(?,?,?,?,?,?,?,?)');
+            $s->execute([$name, trim($_POST['internal_id'] ?? '') ?: null, $locationId, $locationText, $total, $available, 1, trim($_POST['notes'] ?? '')]);
+        }
+        flash('success', 'Accessory saved.');
+        redirect('accessories.php');
+    } catch (Throwable $e) {
+        flash('error', $e->getMessage());
+        redirect('accessories.php' . ($id ? '?id=' . $id : ''));
+    }
+}
+$rows = $pdo->query('SELECT * FROM accessories ORDER BY accessory_name')->fetchAll();
+?><div class="grid two">
+    <div class="card">
+        <h2><?= $edit ? 'Edit' : 'Add' ?> Accessory</h2><?php if (!$locations): ?><div class="alert error">Add a location and shelf first. <a href="locations.php">Manage Locations</a></div><?php endif; ?><form method="post"><?php if ($edit): ?><input type="hidden" name="id" value="<?= $id ?>"><?php endif; ?><label>Name</label><input name="accessory_name" required value="<?= e($edit['accessory_name'] ?? '') ?>"><label>Internal ID (optional)</label><input name="internal_id" value="<?= e($edit['internal_id'] ?? '') ?>"><label>Location and Shelf</label><select name="location_id" required>
+                <option value="">Select location...</option><?php foreach ($locations as $l): ?><option value="<?= (int) $l['id'] ?>" <?= ((int) ($edit['location_id'] ?? 0) === (int) $l['id']) ? 'selected' : '' ?>><?= e(location_label($l)) ?></option><?php endforeach; ?>
+            </select>
+            <p class="muted"><a href="locations.php">Add or edit locations and shelves</a></p>
+            <div class="grid two">
+                <div><label>Total Quantity</label><input type="number" min="0" name="quantity_total" value="<?= e((string) ($edit['quantity_total'] ?? 1)) ?>"></div>
+                <div><label>Available Quantity</label><input type="number" min="0" name="quantity_available" value="<?= e((string) ($edit['quantity_available'] ?? 1)) ?>"></div>
+            </div><label>Notes</label><textarea name="notes"><?= e($edit['notes'] ?? '') ?></textarea><?php if ($edit): ?><label><input type="checkbox" name="active" <?= $edit['active'] ? 'checked' : '' ?>> Active</label><?php endif; ?><button <?= $locations ? '' : 'disabled' ?>>Save Accessory</button>
+        </form>
+    </div>
+    <div class="card">
+        <h2>Accessory Inventory</h2>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Accessory</th>
+                        <th>Location / Shelf</th>
+                        <th>Available</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody><?php foreach ($rows as $r): ?><tr>
+                            <td><strong><?= e($r['accessory_name']) ?></strong><br><span class="muted"><?= e($r['internal_id'] ?: 'No internal ID') ?></span></td>
+                            <td><?= e($r['tool_location'] ?: '—') ?></td>
+                            <td><?= (int) $r['quantity_available'] ?> / <?= (int) $r['quantity_total'] ?></td>
+                            <td><a class="button secondary" href="accessories.php?id=<?= (int) $r['id'] ?>">Edit</a></td>
+                        </tr><?php endforeach; ?></tbody>
+            </table>
+        </div>
+    </div>
+</div><?php require __DIR__ . '/includes/footer.php'; ?>
