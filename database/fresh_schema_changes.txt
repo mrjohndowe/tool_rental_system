@@ -1,0 +1,6 @@
+-- Add these two columns to the accessories CREATE TABLE statement:
+is_consumable TINYINT(1) NOT NULL DEFAULT 0,
+low_stock_level INT UNSIGNED NOT NULL DEFAULT 0,
+
+-- Add this column to the checkout_accessories CREATE TABLE statement:
+is_consumable TINYINT(1) NOT NULL DEFAULT 0,

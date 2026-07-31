@@ -39,7 +39,7 @@ function checkout_cutoff_at(): DateTimeImmutable
 
 function checkout_open_time(): DateTimeImmutable
 {
-    return new DateTimeImmutable(date('Y-m-d') . CHECKOUT_OPEN_TIME, new DateTimeZone(TIMEZONE));
+    return new DateTimeImmutable(date('Y-m-d') . ' ' . CHECKOUT_OPEN_TIME, new DateTimeZone(TIMEZONE));
 }
 
 function return_due_at(): string
@@ -50,18 +50,8 @@ function return_due_at(): string
 function checkout_is_open(): bool
 {
     $now = new DateTimeImmutable('now', new DateTimeZone(TIMEZONE));
-
-    $open   = checkout_open_time();
-    $cutoff = checkout_cutoff_at();
-
-    return $now >= $open && $now < $cutoff;
+    return $now >= checkout_open_time() && $now < checkout_cutoff_at();
 }
-
-/* function checkout_is_open(): bool
-{
-    $now = new DateTimeImmutable('now', new DateTimeZone(TIMEZONE));
-    return $now < checkout_cutoff_at();
-} */
 
 function checkout_cutoff_label(): string
 {
@@ -74,7 +64,6 @@ function return_due_label(): string
     return $due->format('g:i A');
 }
 
-
 function tool_status_label(string $status): string
 {
     return match ($status) {
@@ -86,54 +75,204 @@ function tool_status_label(string $status): string
     };
 }
 
-function checkout_many(array $toolIds, int $employeeId, string $issuedBy, string $notes = '', array $accessoryQuantities = [], ?int $bundleId = null): int
-{
-    if (!checkout_is_open()) throw new RuntimeException('Tool checkout is closed. New checkouts are not permitted at or after ' . checkout_cutoff_label() . '.');
+function checkout_many(
+    array $toolIds,
+    int $employeeId,
+    string $issuedBy,
+    string $notes = '',
+    array $accessoryQuantities = [],
+    ?int $bundleId = null
+): int {
+    if (!checkout_is_open()) {
+        throw new RuntimeException(
+            'Checkout is closed. New checkouts are only permitted between '
+            . checkout_open_time()->format('g:i A')
+            . ' and '
+            . checkout_cutoff_label()
+            . '.'
+        );
+    }
+
     $toolIds = array_values(array_unique(array_filter(array_map('intval', $toolIds))));
-    if (!$toolIds) throw new RuntimeException('Select at least one tool.');
-    $pdo = db(); $pdo->beginTransaction();
+    $accessoryQuantities = array_filter(
+        array_map('intval', $accessoryQuantities),
+        static fn(int $qty): bool => $qty > 0
+    );
+
+    if (!$toolIds && !$accessoryQuantities) {
+        throw new RuntimeException('Select at least one tool, accessory, or consumable item.');
+    }
+
+    $pdo = db();
+    $pdo->beginTransaction();
+
     try {
-        $employeeStmt=$pdo->prepare('SELECT id FROM employees WHERE id=? AND active=1'); $employeeStmt->execute([$employeeId]);
-        if(!$employeeStmt->fetch()) throw new RuntimeException('Employee not found or inactive.');
-        $placeholders=implode(',',array_fill(0,count($toolIds),'?'));
-        $toolStmt=$pdo->prepare("SELECT * FROM tools WHERE id IN ($placeholders) FOR UPDATE"); $toolStmt->execute($toolIds); $tools=$toolStmt->fetchAll();
-        if(count($tools)!==count($toolIds)) throw new RuntimeException('One or more selected tools were not found.');
-        foreach($tools as $tool) if($tool['status']!=='available') throw new RuntimeException($tool['tool_name'].' ('.$tool['internal_id'].') is not available.');
-        $batch=$pdo->prepare('INSERT INTO checkout_batches(employee_id,issued_by,checked_out_at,due_at,bundle_id,checkout_notes,status) VALUES(?,?,NOW(),?,?,?,"open")');
-        $batch->execute([$employeeId,$issuedBy,return_due_at(),$bundleId?:null,$notes]); $batchId=(int)$pdo->lastInsertId();
-        $insert=$pdo->prepare('INSERT INTO checkouts(batch_id,tool_id,employee_id,issued_by,checked_out_at,due_at,checkout_notes,status) VALUES(?,?,?, ?,NOW(),?, ?,"open")');
-        $update=$pdo->prepare('UPDATE tools SET status="checked_out" WHERE id=?');
-        foreach($toolIds as $toolId){$insert->execute([$batchId,$toolId,$employeeId,$issuedBy,return_due_at(),$notes]);$update->execute([$toolId]);}
-        if($accessoryQuantities){
-            $aGet=$pdo->prepare('SELECT * FROM accessories WHERE id=? AND active=1 FOR UPDATE');
-            $aInsert=$pdo->prepare('INSERT INTO checkout_accessories(batch_id,accessory_id,quantity) VALUES(?,?,?)');
-            $aUpdate=$pdo->prepare('UPDATE accessories SET quantity_available=quantity_available-? WHERE id=?');
-            foreach($accessoryQuantities as $accessoryId=>$qty){$accessoryId=(int)$accessoryId;$qty=(int)$qty;if($qty<1)continue;$aGet->execute([$accessoryId]);$a=$aGet->fetch();if(!$a)throw new RuntimeException('Accessory not found.');if((int)$a['quantity_available']<$qty)throw new RuntimeException('Not enough '.$a['accessory_name'].' available.');$aInsert->execute([$batchId,$accessoryId,$qty]);$aUpdate->execute([$qty,$accessoryId]);}
+        $employeeStmt = $pdo->prepare('SELECT id FROM employees WHERE id=? AND active=1');
+        $employeeStmt->execute([$employeeId]);
+        if (!$employeeStmt->fetch()) {
+            throw new RuntimeException('Employee not found or inactive.');
         }
-        $pdo->commit(); return $batchId;
-    } catch(Throwable $e){$pdo->rollBack();throw $e;}
+
+        if ($toolIds) {
+            $placeholders = implode(',', array_fill(0, count($toolIds), '?'));
+            $toolStmt = $pdo->prepare("SELECT * FROM tools WHERE id IN ($placeholders) FOR UPDATE");
+            $toolStmt->execute($toolIds);
+            $tools = $toolStmt->fetchAll();
+
+            if (count($tools) !== count($toolIds)) {
+                throw new RuntimeException('One or more selected tools were not found.');
+            }
+
+            foreach ($tools as $tool) {
+                if ($tool['status'] !== 'available') {
+                    throw new RuntimeException(
+                        $tool['tool_name'] . ' (' . $tool['internal_id'] . ') is not available.'
+                    );
+                }
+            }
+        }
+
+        $batch = $pdo->prepare(
+            'INSERT INTO checkout_batches
+             (employee_id,issued_by,checked_out_at,due_at,bundle_id,checkout_notes,status)
+             VALUES(?,?,NOW(),?,?,?,"open")'
+        );
+        $batch->execute([
+            $employeeId,
+            $issuedBy,
+            return_due_at(),
+            $bundleId ?: null,
+            $notes
+        ]);
+        $batchId = (int)$pdo->lastInsertId();
+
+        if ($toolIds) {
+            $insert = $pdo->prepare(
+                'INSERT INTO checkouts
+                 (batch_id,tool_id,employee_id,issued_by,checked_out_at,due_at,checkout_notes,status)
+                 VALUES(?,?,?, ?,NOW(),?, ?,"open")'
+            );
+            $update = $pdo->prepare('UPDATE tools SET status="checked_out" WHERE id=?');
+
+            foreach ($toolIds as $toolId) {
+                $insert->execute([
+                    $batchId,
+                    $toolId,
+                    $employeeId,
+                    $issuedBy,
+                    return_due_at(),
+                    $notes
+                ]);
+                $update->execute([$toolId]);
+            }
+        }
+
+        $returnableAccessoryCount = 0;
+
+        if ($accessoryQuantities) {
+            $itemGet = $pdo->prepare(
+                'SELECT * FROM accessories WHERE id=? AND active=1 FOR UPDATE'
+            );
+            $itemInsert = $pdo->prepare(
+                'INSERT INTO checkout_accessories
+                 (batch_id,accessory_id,quantity,is_consumable)
+                 VALUES(?,?,?,?)'
+            );
+            $itemUpdate = $pdo->prepare(
+                'UPDATE accessories
+                 SET quantity_available=quantity_available-?
+                 WHERE id=?'
+            );
+
+            foreach ($accessoryQuantities as $itemId => $qty) {
+                $itemId = (int)$itemId;
+                $itemGet->execute([$itemId]);
+                $item = $itemGet->fetch();
+
+                if (!$item) {
+                    throw new RuntimeException('Accessory or consumable item not found.');
+                }
+
+                if ((int)$item['quantity_available'] < $qty) {
+                    throw new RuntimeException(
+                        'Not enough ' . $item['accessory_name'] . ' available.'
+                    );
+                }
+
+                $isConsumable = (int)($item['is_consumable'] ?? 0);
+
+                $itemInsert->execute([
+                    $batchId,
+                    $itemId,
+                    $qty,
+                    $isConsumable
+                ]);
+                $itemUpdate->execute([$qty, $itemId]);
+
+                if (!$isConsumable) {
+                    $returnableAccessoryCount += $qty;
+                }
+            }
+        }
+
+        /*
+         * A checkout containing only consumables has nothing to return.
+         * Close the batch immediately while preserving its issue history.
+         */
+        if (!$toolIds && $returnableAccessoryCount === 0) {
+            $pdo->prepare(
+                'UPDATE checkout_batches
+                 SET status="returned",
+                     returned_at=NOW(),
+                     received_by="Consumable issue"
+                 WHERE id=?'
+            )->execute([$batchId]);
+        }
+
+        $pdo->commit();
+        return $batchId;
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
 }
 
-function checkout_tool(int $toolId, int $employeeId, string $issuedBy, string $notes = ''): void
-{
+function checkout_tool(
+    int $toolId,
+    int $employeeId,
+    string $issuedBy,
+    string $notes = ''
+): void {
     checkout_many([$toolId], $employeeId, $issuedBy, $notes);
 }
 
-function return_tool(int $checkoutId, string $receivedBy, string $condition, string $notes = ''): void
-{
+function return_tool(
+    int $checkoutId,
+    string $receivedBy,
+    string $condition,
+    string $notes = ''
+): void {
     $pdo = db();
     $pdo->beginTransaction();
+
     try {
         $stmt = $pdo->prepare('SELECT * FROM checkouts WHERE id = ? FOR UPDATE');
         $stmt->execute([$checkoutId]);
         $checkout = $stmt->fetch();
+
         if (!$checkout || $checkout['status'] !== 'open') {
             throw new RuntimeException('Open checkout not found.');
         }
 
         $close = $pdo->prepare(
             'UPDATE checkouts
-             SET returned_at = NOW(), received_by = ?, return_condition = ?, return_notes = ?, status = "returned"
+             SET returned_at = NOW(),
+                 received_by = ?,
+                 return_condition = ?,
+                 return_notes = ?,
+                 status = "returned"
              WHERE id = ?'
         );
         $close->execute([$receivedBy, $condition, $notes, $checkoutId]);
@@ -141,28 +280,31 @@ function return_tool(int $checkoutId, string $receivedBy, string $condition, str
         $newStatus = $condition === 'damaged' ? 'maintenance' : 'available';
         $tool = $pdo->prepare('UPDATE tools SET status = ? WHERE id = ?');
         $tool->execute([$newStatus, $checkout['tool_id']]);
+
         $pdo->commit();
     } catch (Throwable $e) {
-        $pdo->rollBack();
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         throw $e;
     }
 }
 
-function auto_copyright($year = 'auto'){
-    if(INTVAL($year) == 'auto')
-    {
-        $year = DATE('Y'); 
-    } 
-    if(INTVAL($year) == DATE('Y'))
-    { 
-        ECHO INTVAL($year); 
-    } 
-    if(INTVAL($year) < DATE('Y'))
-    { 
-        ECHO INTVAL($year) . ' - ' . DATE('Y'); 
-    } 
-    if(INTVAL($year) > DATE('Y'))
-    { 
-        ECHO DATE('Y'); 
+function auto_copyright($year = 'auto')
+{
+    if (intval($year) == 'auto') {
+        $year = date('Y');
+    }
+
+    if (intval($year) == date('Y')) {
+        echo intval($year);
+    }
+
+    if (intval($year) < date('Y')) {
+        echo intval($year) . ' - ' . date('Y');
+    }
+
+    if (intval($year) > date('Y')) {
+        echo date('Y');
     }
 }

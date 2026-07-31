@@ -1,112 +1,393 @@
 <?php
 require __DIR__ . '/includes/header.php';
+
 $pdo = db();
 $batchId = (int)($_GET['batch_id'] ?? $_POST['batch_id'] ?? 0);
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         $pdo->beginTransaction();
+
         $received = current_user()['full_name'];
         $toolConds = $_POST['tool_condition'] ?? [];
         $toolNotes = trim($_POST['notes'] ?? '');
         $selectedTools = array_map('intval', $_POST['return_tools'] ?? []);
+
         foreach ($selectedTools as $checkoutId) {
             $cond = $toolConds[$checkoutId] ?? 'good';
-            $s = $pdo->prepare("SELECT * FROM checkouts WHERE id=? AND batch_id=? AND status='open' FOR UPDATE");
+
+            $s = $pdo->prepare(
+                "SELECT * FROM checkouts
+                 WHERE id=? AND batch_id=? AND status='open'
+                 FOR UPDATE"
+            );
             $s->execute([$checkoutId, $batchId]);
             $c = $s->fetch();
-            if (!$c) continue;
-            $pdo->prepare('UPDATE checkouts SET returned_at=NOW(),received_by=?,return_condition=?,return_notes=?,status="returned" WHERE id=?')->execute([$received, $cond, $toolNotes, $checkoutId]);
-            $pdo->prepare('UPDATE tools SET status=? WHERE id=?')->execute([$cond === 'damaged' ? 'maintenance' : 'available', $c['tool_id']]);
+
+            if (!$c) {
+                continue;
+            }
+
+            $pdo->prepare(
+                'UPDATE checkouts
+                 SET returned_at=NOW(),
+                     received_by=?,
+                     return_condition=?,
+                     return_notes=?,
+                     status="returned"
+                 WHERE id=?'
+            )->execute([
+                $received,
+                $cond,
+                $toolNotes,
+                $checkoutId
+            ]);
+
+            $pdo->prepare(
+                'UPDATE tools SET status=? WHERE id=?'
+            )->execute([
+                $cond === 'damaged' ? 'maintenance' : 'available',
+                $c['tool_id']
+            ]);
         }
+
+        /*
+         * Only return accessories where is_consumable=0.
+         * Consumables were permanently deducted during checkout.
+         */
         $accReturns = $_POST['accessory_return'] ?? [];
         $accConds = $_POST['accessory_condition'] ?? [];
+
         foreach ($accReturns as $caId => $qty) {
             $qty = (int)$qty;
-            if ($qty < 1) continue;
-            $s = $pdo->prepare('SELECT * FROM checkout_accessories WHERE id=? AND batch_id=? FOR UPDATE');
+
+            if ($qty < 1) {
+                continue;
+            }
+
+            $s = $pdo->prepare(
+                'SELECT * FROM checkout_accessories
+                 WHERE id=?
+                   AND batch_id=?
+                   AND is_consumable=0
+                 FOR UPDATE'
+            );
             $s->execute([(int)$caId, $batchId]);
             $ca = $s->fetch();
-            if (!$ca) continue;
+
+            if (!$ca) {
+                continue;
+            }
+
             $remaining = (int)$ca['quantity'] - (int)$ca['returned_quantity'];
             $qty = min($qty, $remaining);
             $cond = $accConds[$caId] ?? 'good';
-            $pdo->prepare('UPDATE checkout_accessories SET returned_quantity=returned_quantity+?,return_condition=?,returned_at=IF(returned_quantity+?>=quantity,NOW(),returned_at) WHERE id=?')->execute([$qty, $cond, $qty, (int)$caId]);
-            if ($cond === 'good') $pdo->prepare('UPDATE accessories SET quantity_available=LEAST(quantity_total,quantity_available+?) WHERE id=?')->execute([$qty, $ca['accessory_id']]);
+
+            $pdo->prepare(
+                'UPDATE checkout_accessories
+                 SET returned_quantity=returned_quantity+?,
+                     return_condition=?,
+                     returned_at=IF(returned_quantity+?>=quantity,NOW(),returned_at)
+                 WHERE id=?'
+            )->execute([
+                $qty,
+                $cond,
+                $qty,
+                (int)$caId
+            ]);
+
+            if ($cond === 'good') {
+                $pdo->prepare(
+                    'UPDATE accessories
+                     SET quantity_available=LEAST(
+                         quantity_total,
+                         quantity_available+?
+                     )
+                     WHERE id=?'
+                )->execute([
+                    $qty,
+                    $ca['accessory_id']
+                ]);
+            }
         }
-        $s = $pdo->prepare("SELECT COUNT(*) FROM checkouts WHERE batch_id=? AND status='open'");
+
+        $s = $pdo->prepare(
+            "SELECT COUNT(*) FROM checkouts
+             WHERE batch_id=? AND status='open'"
+        );
         $s->execute([$batchId]);
         $openTools = (int)$s->fetchColumn();
-        $s = $pdo->prepare('SELECT COALESCE(SUM(quantity-returned_quantity),0) FROM checkout_accessories WHERE batch_id=?');
+
+        $s = $pdo->prepare(
+            'SELECT COALESCE(SUM(quantity-returned_quantity),0)
+             FROM checkout_accessories
+             WHERE batch_id=?
+               AND is_consumable=0'
+        );
         $s->execute([$batchId]);
-        $openAcc = (int)$s->fetchColumn();
-        $status = ($openTools === 0 && $openAcc === 0) ? 'returned' : 'partial';
-        $pdo->prepare('UPDATE checkout_batches SET status=?,received_by=?,return_notes=?,returned_at=IF(?="returned",NOW(),returned_at) WHERE id=?')->execute([$status, $received, $toolNotes, $status, $batchId]);
+        $openAccessories = (int)$s->fetchColumn();
+
+        $status = ($openTools === 0 && $openAccessories === 0)
+            ? 'returned'
+            : 'partial';
+
+        $pdo->prepare(
+            'UPDATE checkout_batches
+             SET status=?,
+                 received_by=?,
+                 return_notes=?,
+                 returned_at=IF(?="returned",NOW(),returned_at)
+             WHERE id=?'
+        )->execute([
+            $status,
+            $received,
+            $toolNotes,
+            $status,
+            $batchId
+        ]);
+
         $pdo->commit();
-        flash('success', 'Selected inventory returned.');
+        flash('success', 'Selected returnable inventory returned.');
         redirect('returns.php');
     } catch (Throwable $e) {
-        if ($pdo->inTransaction()) $pdo->rollBack();
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+
         flash('error', $e->getMessage());
         redirect('returns.php?batch_id=' . $batchId);
     }
 }
+
 $selected = null;
 $selTools = [];
 $selAcc = [];
+
 if ($batchId) {
-    $s = $pdo->prepare("SELECT b.*,e.name employee_name,e.badge_number FROM checkout_batches b JOIN employees e ON e.id=b.employee_id WHERE b.id=? AND b.status<>'returned'");
+    $s = $pdo->prepare(
+        "SELECT b.*,e.name employee_name,e.badge_number
+         FROM checkout_batches b
+         JOIN employees e ON e.id=b.employee_id
+         WHERE b.id=? AND b.status<>'returned'"
+    );
     $s->execute([$batchId]);
     $selected = $s->fetch();
+
     if ($selected) {
-        $s = $pdo->prepare("SELECT c.*,t.tool_name,t.internal_id,t.serial_number FROM checkouts c JOIN tools t ON t.id=c.tool_id WHERE c.batch_id=? AND c.status='open'");
+        $s = $pdo->prepare(
+            "SELECT c.*,t.tool_name,t.internal_id,t.serial_number
+             FROM checkouts c
+             JOIN tools t ON t.id=c.tool_id
+             WHERE c.batch_id=? AND c.status='open'"
+        );
         $s->execute([$batchId]);
         $selTools = $s->fetchAll();
-        $s = $pdo->prepare('SELECT ca.*,a.accessory_name,a.internal_id FROM checkout_accessories ca JOIN accessories a ON a.id=ca.accessory_id WHERE ca.batch_id=? AND ca.returned_quantity<ca.quantity');
+
+        $s = $pdo->prepare(
+            'SELECT ca.*,a.accessory_name,a.internal_id
+             FROM checkout_accessories ca
+             JOIN accessories a ON a.id=ca.accessory_id
+             WHERE ca.batch_id=?
+               AND ca.is_consumable=0
+               AND ca.returned_quantity<ca.quantity'
+        );
         $s->execute([$batchId]);
         $selAcc = $s->fetchAll();
     }
 }
-$rows = $pdo->query("SELECT b.*,e.name employee_name,e.badge_number,COUNT(DISTINCT CASE WHEN c.status='open' THEN c.id END) open_tools,COALESCE(SUM(ca.quantity-ca.returned_quantity),0) open_accessories,GROUP_CONCAT(DISTINCT CASE WHEN c.status='open' THEN CONCAT(t.tool_name,' [',t.internal_id,']') END SEPARATOR ', ') tool_list FROM checkout_batches b JOIN employees e ON e.id=b.employee_id LEFT JOIN checkouts c ON c.batch_id=b.id LEFT JOIN tools t ON t.id=c.tool_id LEFT JOIN checkout_accessories ca ON ca.batch_id=b.id WHERE b.status<>'returned' GROUP BY b.id ORDER BY b.due_at")->fetchAll();
-?><?php if ($selected): ?><div class="card">
+
+$rows = $pdo->query(
+    "SELECT b.*,
+            e.name employee_name,
+            e.badge_number,
+            COUNT(DISTINCT CASE
+                WHEN c.status='open' THEN c.id
+            END) open_tools,
+            COALESCE(SUM(CASE
+                WHEN ca.is_consumable=0
+                THEN ca.quantity-ca.returned_quantity
+                ELSE 0
+            END),0) open_accessories,
+            GROUP_CONCAT(DISTINCT CASE
+                WHEN c.status='open'
+                THEN CONCAT(t.tool_name,' [',t.internal_id,']')
+            END SEPARATOR ', ') tool_list
+     FROM checkout_batches b
+     JOIN employees e ON e.id=b.employee_id
+     LEFT JOIN checkouts c ON c.batch_id=b.id
+     LEFT JOIN tools t ON t.id=c.tool_id
+     LEFT JOIN checkout_accessories ca ON ca.batch_id=b.id
+     WHERE b.status<>'returned'
+     GROUP BY b.id
+     HAVING open_tools > 0 OR open_accessories > 0
+     ORDER BY b.due_at"
+)->fetchAll();
+?>
+
+<?php if ($selected): ?>
+<div class="card">
     <h2>Return Checkout #<?= $batchId ?></h2>
-    <p><strong><?= e($selected['employee_name']) ?></strong> · Due <?= e(date('M j, Y g:i A', strtotime($selected['due_at']))) ?></p>
-    <form method="post"><input type="hidden" name="batch_id" value="<?= $batchId ?>">
-        <h3>Tools</h3>
-        <div class="selection-list"><?php foreach ($selTools as $t): ?><div class="select-item return-row"><label><input type="checkbox" name="return_tools[]" value="<?= (int)$t['id'] ?>" checked> <strong><?= e($t['tool_name']) ?></strong><br><small><?= e($t['internal_id']) ?> · <?= e($t['serial_number']) ?></small></label><select name="tool_condition[<?= (int)$t['id'] ?>]">
-                        <option value="good">Good / Complete</option>
-                        <option value="missing_parts">Missing Parts</option>
-                        <option value="damaged">Damaged</option>
-                    </select></div><?php endforeach; ?></div><?php if ($selAcc): ?><h3>Accessories</h3>
-            <div class="selection-list"><?php foreach ($selAcc as $a): $remain = (int)$a['quantity'] - (int)$a['returned_quantity']; ?><div class="select-item return-row"><span><strong><?= e($a['accessory_name']) ?></strong><br><small><?= $remain ?> still out</small></span><input type="number" name="accessory_return[<?= (int)$a['id'] ?>]" min="0" max="<?= $remain ?>" value="<?= $remain ?>"><select name="accessory_condition[<?= (int)$a['id'] ?>]">
+
+    <p>
+        <strong><?= e($selected['employee_name']) ?></strong>
+        · Due
+        <?= e(date('M j, Y g:i A', strtotime($selected['due_at']))) ?>
+    </p>
+
+    <form method="post">
+        <input type="hidden" name="batch_id" value="<?= $batchId ?>">
+
+        <?php if ($selTools): ?>
+            <h3>Tools</h3>
+            <div class="selection-list">
+                <?php foreach ($selTools as $t): ?>
+                    <div class="select-item return-row">
+                        <label>
+                            <input
+                                type="checkbox"
+                                name="return_tools[]"
+                                value="<?= (int)$t['id'] ?>"
+                                checked
+                            >
+                            <strong><?= e($t['tool_name']) ?></strong><br>
+                            <small>
+                                <?= e($t['internal_id']) ?>
+                                ·
+                                <?= e($t['serial_number']) ?>
+                            </small>
+                        </label>
+
+                        <select name="tool_condition[<?= (int)$t['id'] ?>]">
+                            <option value="good">Good / Complete</option>
+                            <option value="missing_parts">Missing Parts</option>
+                            <option value="damaged">Damaged</option>
+                        </select>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        <?php endif; ?>
+
+        <?php if ($selAcc): ?>
+            <h3>Returnable Accessories</h3>
+            <div class="selection-list">
+                <?php foreach ($selAcc as $a):
+                    $remain = (int)$a['quantity']
+                        - (int)$a['returned_quantity'];
+                ?>
+                    <div class="select-item return-row">
+                        <span>
+                            <strong><?= e($a['accessory_name']) ?></strong><br>
+                            <small><?= $remain ?> still out</small>
+                        </span>
+
+                        <input
+                            type="number"
+                            name="accessory_return[<?= (int)$a['id'] ?>]"
+                            min="0"
+                            max="<?= $remain ?>"
+                            value="<?= $remain ?>"
+                        >
+
+                        <select
+                            name="accessory_condition[<?= (int)$a['id'] ?>]"
+                        >
                             <option value="good">Good</option>
                             <option value="damaged">Damaged</option>
                             <option value="missing">Missing</option>
-                        </select></div><?php endforeach; ?></div><?php endif; ?><label>Return Notes</label><textarea name="notes"></textarea>
-        <div class="actions"><button>Return Selected Inventory</button><a class="button secondary" href="returns.php">Cancel</a></div>
+                        </select>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        <?php endif; ?>
+
+        <p class="muted">
+            Consumable items do not appear here because they were permanently
+            issued and deducted from inventory.
+        </p>
+
+        <label>Return Notes</label>
+        <textarea name="notes"></textarea>
+
+        <div class="actions">
+            <button>Return Selected Inventory</button>
+            <a class="button secondary" href="returns.php">Cancel</a>
+        </div>
     </form>
-</div><?php endif; ?><div class="card" style="margin-top:18px">
+</div>
+<?php endif; ?>
+
+<div class="card" style="margin-top:18px">
     <h2>Open Checkout Transactions</h2>
+
     <div class="table-wrap">
         <table>
             <thead>
                 <tr>
                     <th>Checkout</th>
                     <th>Employee</th>
-                    <th>Inventory Out</th>
+                    <th>Returnable Inventory Out</th>
                     <th>Due</th>
                     <th></th>
                 </tr>
             </thead>
-            <tbody><?php if (!$rows): ?><tr>
-                        <td colspan="5">No open checkouts.</td>
-                    </tr><?php endif;
-                        foreach ($rows as $r): $late = strtotime($r['due_at']) < time(); ?><tr class="<?= $late ? 'overdue-row' : '' ?>">
-                        <td>#<?= (int)$r['id'] ?><br><span class="muted"><?= e(date('M j g:i A', strtotime($r['checked_out_at']))) ?></span></td>
-                        <td><?= e($r['employee_name']) ?><br><span class="muted"><?= e($r['badge_number'] ?: 'No badge') ?></span></td>
-                        <td><?= (int)$r['open_tools'] ?> tool(s), <?= (int)$r['open_accessories'] ?> accessory item(s)<br><span class="muted"><?= e($r['tool_list'] ?: 'Accessories only') ?></span></td>
-                        <td><span class="badge <?= $late ? 'overdue' : 'open' ?>"><?= $late ? 'OVERDUE' : e(date('M j g:i A', strtotime($r['due_at']))) ?></span></td>
-                        <td><a class="button success" href="returns.php?batch_id=<?= (int)$r['id'] ?>">Return</a></td>
-                    </tr><?php endforeach; ?></tbody>
+            <tbody>
+            <?php if (!$rows): ?>
+                <tr>
+                    <td colspan="5">No open returnable checkouts.</td>
+                </tr>
+            <?php endif; ?>
+
+            <?php foreach ($rows as $r):
+                $late = strtotime($r['due_at']) < time();
+            ?>
+                <tr class="<?= $late ? 'overdue-row' : '' ?>">
+                    <td>
+                        #<?= (int)$r['id'] ?><br>
+                        <span class="muted">
+                            <?= e(date(
+                                'M j g:i A',
+                                strtotime($r['checked_out_at'])
+                            )) ?>
+                        </span>
+                    </td>
+
+                    <td>
+                        <?= e($r['employee_name']) ?><br>
+                        <span class="muted">
+                            <?= e($r['badge_number'] ?: 'No badge') ?>
+                        </span>
+                    </td>
+
+                    <td>
+                        <?= (int)$r['open_tools'] ?> tool(s),
+                        <?= (int)$r['open_accessories'] ?> accessory item(s)
+                        <br>
+                        <span class="muted">
+                            <?= e($r['tool_list'] ?: 'Accessories only') ?>
+                        </span>
+                    </td>
+
+                    <td>
+                        <span class="badge <?= $late ? 'overdue' : 'open' ?>">
+                            <?= $late
+                                ? 'OVERDUE'
+                                : e(date(
+                                    'M j g:i A',
+                                    strtotime($r['due_at'])
+                                )) ?>
+                        </span>
+                    </td>
+
+                    <td>
+                        <a
+                            class="button success"
+                            href="returns.php?batch_id=<?= (int)$r['id'] ?>"
+                        >Return</a>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
         </table>
     </div>
-</div><?php require __DIR__ . '/includes/footer.php'; ?>
+</div>
+<?php require __DIR__ . '/includes/footer.php'; ?>
