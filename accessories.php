@@ -1,18 +1,20 @@
 <?php
 require __DIR__ . '/includes/header.php';
+require_once __DIR__ . '/includes/internal_id.php';
 
 $pdo = db();
 $id = (int)($_GET['id'] ?? $_POST['id'] ?? 0);
 $edit = null;
 
 if ($id) {
-    $s = $pdo->prepare('SELECT * FROM accessories WHERE id=?');
-    $s->execute([$id]);
-    $edit = $s->fetch();
+    $stmt = $pdo->prepare('SELECT * FROM accessories WHERE id=?');
+    $stmt->execute([$id]);
+    $edit = $stmt->fetch();
 }
 
 $locations = $pdo->query(
-    'SELECT * FROM tool_locations
+    'SELECT *
+     FROM tool_locations
      WHERE active=1 OR id=' . (int)($edit['location_id'] ?? 0) . '
      ORDER BY location_name,area,shelf'
 )->fetchAll();
@@ -21,31 +23,66 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         $name = trim($_POST['accessory_name'] ?? '');
         $total = max(0, (int)($_POST['quantity_total'] ?? 0));
-        $available = max(0, (int)($_POST['quantity_available'] ?? $total));
+        $available = max(
+            0,
+            (int)($_POST['quantity_available'] ?? $total)
+        );
         $locationId = (int)($_POST['location_id'] ?? 0);
         $isConsumable = isset($_POST['is_consumable']) ? 1 : 0;
-        $lowStockLevel = max(0, (int)($_POST['low_stock_level'] ?? 0));
-
-        $ls = $pdo->prepare('SELECT * FROM tool_locations WHERE id=?');
-        $ls->execute([$locationId]);
-        $loc = $ls->fetch();
-
-        if (!$loc) {
-            throw new RuntimeException('Select a valid inventory location.');
-        }
+        $lowStockLevel = max(
+            0,
+            (int)($_POST['low_stock_level'] ?? 0)
+        );
 
         if ($name === '') {
             throw new RuntimeException('Item name is required.');
         }
 
         if ($available > $total) {
-            throw new RuntimeException('Available quantity cannot exceed total quantity.');
+            throw new RuntimeException(
+                'Available quantity cannot exceed total quantity.'
+            );
         }
 
-        $locationText = location_label($loc);
+        $locationStmt = $pdo->prepare(
+            'SELECT * FROM tool_locations WHERE id=?'
+        );
+        $locationStmt->execute([$locationId]);
+        $location = $locationStmt->fetch();
+
+        if (!$location) {
+            throw new RuntimeException('Select a valid inventory location.');
+        }
+
+        $locationText = location_label($location);
+
+        /*
+         * Existing items keep their permanent Internal ID.
+         * New items receive the next number based on the item name.
+         */
+        if ($id) {
+            $existingStmt = $pdo->prepare(
+                'SELECT internal_id FROM accessories WHERE id=?'
+            );
+            $existingStmt->execute([$id]);
+            $internalId = (string)$existingStmt->fetchColumn();
+
+            if ($internalId === '') {
+                $internalId = generate_name_based_internal_id(
+                    $name,
+                    'accessories',
+                    $id
+                );
+            }
+        } else {
+            $internalId = generate_name_based_internal_id(
+                $name,
+                'accessories'
+            );
+        }
 
         if ($id) {
-            $s = $pdo->prepare(
+            $stmt = $pdo->prepare(
                 'UPDATE accessories
                  SET accessory_name=?,
                      internal_id=?,
@@ -60,9 +97,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                  WHERE id=?'
             );
 
-            $s->execute([
+            $stmt->execute([
                 $name,
-                trim($_POST['internal_id'] ?? '') ?: null,
+                $internalId,
                 $locationId,
                 $locationText,
                 $total,
@@ -74,17 +111,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $id
             ]);
         } else {
-            $s = $pdo->prepare(
+            $stmt = $pdo->prepare(
                 'INSERT INTO accessories
-                 (accessory_name,internal_id,location_id,tool_location,
-                  quantity_total,quantity_available,is_consumable,
-                  low_stock_level,active,notes)
+                 (
+                    accessory_name,
+                    internal_id,
+                    location_id,
+                    tool_location,
+                    quantity_total,
+                    quantity_available,
+                    is_consumable,
+                    low_stock_level,
+                    active,
+                    notes
+                 )
                  VALUES(?,?,?,?,?,?,?,?,?,?)'
             );
 
-            $s->execute([
+            $stmt->execute([
                 $name,
-                trim($_POST['internal_id'] ?? '') ?: null,
+                $internalId,
                 $locationId,
                 $locationText,
                 $total,
@@ -96,17 +142,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ]);
         }
 
-        flash('success', $isConsumable ? 'Consumable item saved.' : 'Accessory saved.');
+        flash(
+            'success',
+            ($isConsumable ? 'Consumable' : 'Accessory')
+            . ($id ? ' updated.' : ' saved with Internal ID ' . $internalId . '.')
+        );
         redirect('accessories.php');
     } catch (Throwable $e) {
-        flash('error', $e->getMessage());
+        $message = $e->getMessage();
+
+        if (
+            str_contains($message, 'Duplicate') ||
+            str_contains($message, '1062')
+        ) {
+            $message = 'The generated Internal ID already exists. Please try saving again.';
+        }
+
+        flash('error', $message);
         redirect('accessories.php' . ($id ? '?id=' . $id : ''));
     }
 }
 
 $rows = $pdo->query(
-    'SELECT * FROM accessories
-     ORDER BY is_consumable, accessory_name'
+    'SELECT *
+     FROM accessories
+     ORDER BY is_consumable,accessory_name'
 )->fetchAll();
 ?>
 <div class="grid two">
@@ -128,32 +188,45 @@ $rows = $pdo->query(
             <label>Item Name</label>
             <input
                 name="accessory_name"
+                id="item_name"
                 required
                 value="<?= e($edit['accessory_name'] ?? '') ?>"
                 placeholder="Example: Black Marker or Drill Battery"
+                autocomplete="off"
             >
 
-            <label>Internal ID (optional)</label>
+            <label>Internal ID</label>
             <input
-                name="internal_id"
+                id="internal_id"
+                readonly
                 value="<?= e($edit['internal_id'] ?? '') ?>"
+                placeholder="Generated from the item name"
             >
+            <p class="muted">
+                The final unique number is confirmed when the item is saved.
+                Existing IDs remain unchanged.
+            </p>
 
             <label>Location and Shelf</label>
             <select name="location_id" required>
                 <option value="">Select location...</option>
-                <?php foreach ($locations as $l): ?>
+                <?php foreach ($locations as $location): ?>
                     <option
-                        value="<?= (int)$l['id'] ?>"
-                        <?= ((int)($edit['location_id'] ?? 0) === (int)$l['id']) ? 'selected' : '' ?>
+                        value="<?= (int)$location['id'] ?>"
+                        <?= ((int)($edit['location_id'] ?? 0)
+                            === (int)$location['id'])
+                            ? 'selected'
+                            : '' ?>
                     >
-                        <?= e(location_label($l)) ?>
+                        <?= e(location_label($location)) ?>
                     </option>
                 <?php endforeach; ?>
             </select>
 
             <p class="muted">
-                <a href="locations.php">Add or edit locations and shelves</a>
+                <a href="locations.php">
+                    Add or edit locations and shelves
+                </a>
             </p>
 
             <label class="select-item">
@@ -166,8 +239,8 @@ $rows = $pdo->query(
                 <span>
                     <strong>Consumable item</strong><br>
                     <small>
-                        Consumables are deducted when issued and are never returned,
-                        such as markers, spray paint, tape, gloves, or zip ties.
+                        Deducted when issued and never returned, such as
+                        markers, spray paint, tape, gloves, or zip ties.
                     </small>
                 </span>
             </label>
@@ -201,10 +274,6 @@ $rows = $pdo->query(
                 name="low_stock_level"
                 value="<?= e((string)($edit['low_stock_level'] ?? 0)) ?>"
             >
-            <p class="muted">
-                Set to 0 to disable. The inventory table highlights quantities
-                at or below this level.
-            </p>
 
             <label>Notes</label>
             <textarea name="notes"><?= e($edit['notes'] ?? '') ?></textarea>
@@ -214,13 +283,15 @@ $rows = $pdo->query(
                     <input
                         type="checkbox"
                         name="active"
-                        <?= $edit['active'] ? 'checked' : '' ?>
+                        <?= !empty($edit['active']) ? 'checked' : '' ?>
                     >
                     Active
                 </label>
             <?php endif; ?>
 
-            <button <?= $locations ? '' : 'disabled' ?>>Save Inventory Item</button>
+            <button <?= $locations ? '' : 'disabled' ?>>
+                Save Inventory Item
+            </button>
         </form>
     </div>
 
@@ -238,38 +309,47 @@ $rows = $pdo->query(
                         <th></th>
                     </tr>
                 </thead>
+
                 <tbody>
                 <?php if (!$rows): ?>
                     <tr>
-                        <td colspan="5">No accessory or consumable inventory found.</td>
+                        <td colspan="5">
+                            No accessory or consumable inventory found.
+                        </td>
                     </tr>
                 <?php endif; ?>
 
-                <?php foreach ($rows as $r):
-                    $lowStockLevel = (int)($r['low_stock_level'] ?? 0);
+                <?php foreach ($rows as $row):
+                    $lowStockLevel = (int)($row['low_stock_level'] ?? 0);
+                    $availableQuantity = (int)($row['quantity_available'] ?? 0);
                     $low = $lowStockLevel > 0
-                             && (int)($r['quantity_available'] ?? 0) <= $lowStockLevel;
+                        && $availableQuantity <= $lowStockLevel;
                 ?>
                     <tr class="<?= $low ? 'overdue-row' : '' ?>">
                         <td>
-                            <strong><?= e($r['accessory_name']) ?></strong><br>
+                            <strong><?= e($row['accessory_name']) ?></strong><br>
                             <span class="muted">
-                                <?= e($r['internal_id'] ?: 'No internal ID') ?>
+                                <?= e($row['internal_id'] ?: 'No Internal ID') ?>
                             </span>
                         </td>
 
                         <td>
-                            <span class="badge <?= $r['is_consumable'] ? 'overdue' : 'open' ?>">
-                                <?= $r['is_consumable'] ? 'Consumable' : 'Returnable' ?>
+                            <span class="badge <?= $row['is_consumable']
+                                ? 'overdue'
+                                : 'open' ?>">
+                                <?= $row['is_consumable']
+                                    ? 'Consumable'
+                                    : 'Returnable' ?>
                             </span>
                         </td>
 
-                        <td><?= e($r['tool_location'] ?: '—') ?></td>
+                        <td><?= e($row['tool_location'] ?: '—') ?></td>
 
                         <td>
-                            <?= (int)$r['quantity_available'] ?>
+                            <?= $availableQuantity ?>
                             /
-                            <?= (int)$r['quantity_total'] ?>
+                            <?= (int)($row['quantity_total'] ?? 0) ?>
+
                             <?php if ($low): ?>
                                 <br><strong>LOW STOCK</strong>
                             <?php endif; ?>
@@ -278,8 +358,10 @@ $rows = $pdo->query(
                         <td>
                             <a
                                 class="button secondary"
-                                href="accessories.php?id=<?= (int)$r['id'] ?>"
-                            >Edit</a>
+                                href="accessories.php?id=<?= (int)$row['id'] ?>"
+                            >
+                                Edit
+                            </a>
                         </td>
                     </tr>
                 <?php endforeach; ?>
@@ -288,4 +370,34 @@ $rows = $pdo->query(
         </div>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const nameInput = document.getElementById('item_name');
+    const idInput = document.getElementById('internal_id');
+    const editingExisting = <?= $id ? 'true' : 'false' ?>;
+
+    if (!nameInput || !idInput || editingExisting) {
+        return;
+    }
+
+    function createBase(name) {
+        return name
+            .trim()
+            .toUpperCase()
+            .replace(/&/g, ' AND ')
+            .replace(/[^A-Z0-9]+/g, '')
+            .substring(0, 30);
+    }
+
+    function updatePreview() {
+        const base = createBase(nameInput.value);
+        idInput.value = base ? base + '-001' : '';
+    }
+
+    nameInput.addEventListener('input', updatePreview);
+    updatePreview();
+});
+</script>
+
 <?php require __DIR__ . '/includes/footer.php'; ?>

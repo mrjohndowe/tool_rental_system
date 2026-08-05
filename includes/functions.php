@@ -308,3 +308,35 @@ function auto_copyright($year = 'auto')
         echo date('Y');
     }
 }
+
+function generate_internal_id(string $name, string $table = 'tools'): string
+{
+    $pdo = db();
+
+    // Remove spaces and special characters
+    $base = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $name));
+
+    // Limit length if desired
+    $base = substr($base, 0, 20);
+
+    $stmt = $pdo->prepare("
+        SELECT internal_id
+        FROM {$table}
+        WHERE internal_id LIKE ?
+        ORDER BY id DESC
+        LIMIT 1
+    ");
+
+    $stmt->execute([$base . '-%']);
+
+    $last = $stmt->fetchColumn();
+
+    if (!$last) {
+        $next = 1;
+    } else {
+        preg_match('/-(\d+)$/', $last, $matches);
+        $next = isset($matches[1]) ? ((int)$matches[1] + 1) : 1;
+    }
+
+    return sprintf('%s-%03d', $base, $next);
+}
